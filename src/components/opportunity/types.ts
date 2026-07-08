@@ -48,6 +48,7 @@ export interface OpportunityRecord {
   diasEmAberto: number;
   diasParaEntrega: number | null;
   estoqueDisponivel: number;
+  extraFields?: Record<string, string | number | Date | null>;
 }
 
 export type ExportType = 'completo' | 'servicos';

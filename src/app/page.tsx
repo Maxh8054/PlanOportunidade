@@ -147,36 +147,70 @@ export default function SalesOpportunityDashboard() {
   const [tempVisibleColumns, setTempVisibleColumns] = useState<string[]>([]);
   const sensors = useSensors(useSensor(PointerSensor));
 
+  // Dynamic Excel column headers per origin (columns not in COLUMNS_BY_ORIGIN)
+  const [excelHeadersByOrigin, setExcelHeadersByOrigin] = useState<Record<string, { key: string; label: string }[]>>({});
+
   // Helper: parse dates from JSON
-  const parseDates = (d: Record<string, unknown>, index: number): Record<string, unknown> => ({
-    ...d,
-    id: index + 1,
-    dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
-    dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
-    dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
-    previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
-    dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
-    dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
-    dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
-    dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
-    dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
-    dataDisponibilidade: (d as Record<string, unknown>).dataDisponibilidade ? new Date((d as Record<string, unknown>).dataDisponibilidade as string) : null,
-  });
+  const parseDates = (d: Record<string, unknown>, index: number): Record<string, unknown> => {
+    const parsed: Record<string, unknown> = {
+      ...d,
+      id: index + 1,
+      dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
+      dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
+      dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
+      previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
+      dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
+      dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
+      dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
+      dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
+      dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
+      dataDisponibilidade: d.dataDisponibilidade ? new Date(d.dataDisponibilidade as string) : null,
+    };
+    // Parse dates in extraFields
+    if (d.extraFields && typeof d.extraFields === 'object') {
+      const ef = d.extraFields as Record<string, unknown>;
+      const parsedEf: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(ef)) {
+        if (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}T/)) {
+          parsedEf[k] = new Date(v);
+        } else {
+          parsedEf[k] = v;
+        }
+      }
+      parsed.extraFields = parsedEf;
+    }
+    return parsed;
+  };
 
   // Helper: serialize dates to JSON
-  const serializeData = (records: OpportunityRecord[]) => records.map(d => ({
-    ...d,
-    dataAbertura: d.dataAbertura?.toISOString() || null,
-    dataTroca: d.dataTroca?.toISOString() || null,
-    dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
-    previsaoChegada: d.previsaoChegada?.toISOString() || null,
-    dataVenda: d.dataVenda?.toISOString() || null,
-    dataFollowUp: d.dataFollowUp?.toISOString() || null,
-    dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
-    dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
-    dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
-    dataDisponibilidade: (d as unknown as Record<string, unknown>).dataDisponibilidade ? new Date((d as unknown as Record<string, unknown>).dataDisponibilidade as string).toISOString() : null,
-  }));
+  const serializeData = (records: OpportunityRecord[]) => records.map(d => {
+    const serialized: Record<string, unknown> = {
+      ...d,
+      dataAbertura: d.dataAbertura?.toISOString() || null,
+      dataTroca: d.dataTroca?.toISOString() || null,
+      dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
+      previsaoChegada: d.previsaoChegada?.toISOString() || null,
+      dataVenda: d.dataVenda?.toISOString() || null,
+      dataFollowUp: d.dataFollowUp?.toISOString() || null,
+      dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
+      dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
+      dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
+      dataDisponibilidade: (d as unknown as Record<string, unknown>).dataDisponibilidade instanceof Date ? (d as unknown as Record<string, unknown>).dataDisponibilidade : null,
+    };
+    // Serialize dates in extraFields
+    if (d.extraFields) {
+      const serializedEf: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(d.extraFields)) {
+        if (v instanceof Date) {
+          serializedEf[k] = v.toISOString();
+        } else {
+          serializedEf[k] = v;
+        }
+      }
+      serialized.extraFields = serializedEf;
+    }
+    return serialized;
+  });
 
   // Load from API on mount
   useEffect(() => {
@@ -193,6 +227,9 @@ export default function SalesOpportunityDashboard() {
       if (json.data && Array.isArray(json.data) && json.data.length > 0) {
         const parsed = json.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord);
         setData(parsed);
+        if (json.excelHeadersByOrigin) {
+          setExcelHeadersByOrigin(json.excelHeadersByOrigin);
+        }
         setLastSync(json.updatedAt ? new Date(json.updatedAt).toLocaleString('pt-BR') : new Date().toLocaleString('pt-BR'));
       } else {
         // Fallback to localStorage
@@ -202,6 +239,9 @@ export default function SalesOpportunityDashboard() {
             const parsed = JSON.parse(saved);
             if (parsed.data && Array.isArray(parsed.data)) {
               setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+            }
+            if (parsed.excelHeadersByOrigin) {
+              setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
             }
           }
         } catch { /* ignore */ }
@@ -214,6 +254,9 @@ export default function SalesOpportunityDashboard() {
           const parsed = JSON.parse(saved);
           if (parsed.data && Array.isArray(parsed.data)) {
             setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+          }
+          if (parsed.excelHeadersByOrigin) {
+            setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
           }
         }
       } catch { /* ignore */ }
@@ -232,6 +275,7 @@ export default function SalesOpportunityDashboard() {
       exportDate: new Date().toISOString(),
       totalRecords: data.length,
       data: serializeData(data),
+      excelHeadersByOrigin,
     };
     localStorage.setItem('dashboard_oportunidades_data', JSON.stringify(exportData));
     // Try to save to API (don't await, fire and forget)
@@ -274,7 +318,10 @@ export default function SalesOpportunityDashboard() {
   const [oppAnaliseFilter, setOppAnaliseFilter] = useState<string[]>([]);
   const [oppPrazoFilter, setOppPrazoFilter] = useState<string[]>([]);
   const [oppSearchTerm, setOppSearchTerm] = useState('');
-  const [oppOrigemFilter, setOppOrigemFilter] = useState<string[]>(SHEET_NAMES.length > 0 ? [SHEET_NAMES[0]] : []);
+  const [oppOrigemFilter, setOppOrigemFilter] = useState<string[]>(() => {
+    const lundinIdx = SHEET_NAMES.findIndex(n => n.toLowerCase().includes('lundin'));
+    return lundinIdx >= 0 ? [SHEET_NAMES[lundinIdx]] : (SHEET_NAMES.length > 0 ? [SHEET_NAMES[0]] : []);
+  });
 
   // Follow Up Modal State
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
@@ -357,14 +404,21 @@ export default function SalesOpportunityDashboard() {
     let result = data;
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
-      result = result.filter(d =>
-        d.pn?.toLowerCase().includes(search) ||
-        d.partname?.toLowerCase().includes(search) ||
-        d.cliente?.toLowerCase().includes(search) ||
-        d.descricao?.toLowerCase().includes(search) ||
-        d.ordemManutencao?.toLowerCase().includes(search) ||
-        d.pedidoCompra?.toLowerCase().includes(search)
-      );
+      result = result.filter(d => {
+        if (d.pn?.toLowerCase().includes(search)) return true;
+        if (d.partname?.toLowerCase().includes(search)) return true;
+        if (d.cliente?.toLowerCase().includes(search)) return true;
+        if (d.descricao?.toLowerCase().includes(search)) return true;
+        if (d.ordemManutencao?.toLowerCase().includes(search)) return true;
+        if (d.pedidoCompra?.toLowerCase().includes(search)) return true;
+        // Search in extra fields
+        if (d.extraFields) {
+          for (const v of Object.values(d.extraFields)) {
+            if (v != null && String(v).toLowerCase().includes(search)) return true;
+          }
+        }
+        return false;
+      });
     }
     if (empresaFilter.length > 0) result = result.filter(d => empresaFilter.includes(d.empresa));
     if (clienteFilter.length > 0) result = result.filter(d => clienteFilter.includes(d.cliente));
@@ -413,12 +467,18 @@ export default function SalesOpportunityDashboard() {
     let result = data;
     if (oppSearchTerm) {
       const search = oppSearchTerm.toLowerCase();
-      result = result.filter(d =>
-        d.pn?.toLowerCase().includes(search) ||
-        d.partname?.toLowerCase().includes(search) ||
-        d.cliente?.toLowerCase().includes(search) ||
-        d.descricao?.toLowerCase().includes(search)
-      );
+      result = result.filter(d => {
+        if (d.pn?.toLowerCase().includes(search)) return true;
+        if (d.partname?.toLowerCase().includes(search)) return true;
+        if (d.cliente?.toLowerCase().includes(search)) return true;
+        if (d.descricao?.toLowerCase().includes(search)) return true;
+        if (d.extraFields) {
+          for (const v of Object.values(d.extraFields)) {
+            if (v != null && String(v).toLowerCase().includes(search)) return true;
+          }
+        }
+        return false;
+      });
     }
     if (oppOrigemFilter.length > 0) result = result.filter(d => oppOrigemFilter.includes(d.origemAba));
     // Origem filter is always required - if somehow empty, show nothing
@@ -478,6 +538,16 @@ export default function SalesOpportunityDashboard() {
     const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
     return COLUMNS_BY_ORIGIN[origin] || [];
   }, [oppOrigemFilter]);
+
+  // All available columns = predefined + dynamic Excel columns
+  const allAvailableColumns = useMemo(() => {
+    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+    const predefined = COLUMNS_BY_ORIGIN[origin] || [];
+    const dynamic = excelHeadersByOrigin[origin] || [];
+    const predefinedKeys = new Set(predefined.map(c => c.key));
+    const extraDynamic = dynamic.filter(c => !predefinedKeys.has(c.key));
+    return [...predefined, ...extraDynamic];
+  }, [oppOrigemFilter, excelHeadersByOrigin]);
 
   // When origin changes, reset visible columns to origin defaults (only if user hasn't customized)
   useEffect(() => {
@@ -627,6 +697,7 @@ export default function SalesOpportunityDashboard() {
       const workbook = XLSX.read(fileData);
       const allParsedData: OpportunityRecord[] = [];
       let globalId = 1;
+      const allDynamicHeaders: Record<string, { key: string; label: string }[]> = {};
 
       for (const sheetName of SHEET_NAMES) {
         const actualSheetName = workbook.SheetNames.find(n => n.toLowerCase() === sheetName.toLowerCase());
@@ -636,9 +707,22 @@ export default function SalesOpportunityDashboard() {
         if (jsonData.length < 2) continue;
         const headers = jsonData[0] as string[];
         const columnIndices: Record<string, number> = {};
+        const dynamicHeaders: { key: string; label: string }[] = [];
+        const headerKeyMap: Record<string, string> = {}; // original header -> final key (mapped or raw)
         headers.forEach((header, index) => {
-          const mappedKey = COLUMN_MAP[header?.toString().trim()];
-          if (mappedKey) columnIndices[mappedKey] = index;
+          const headerStr = header?.toString().trim();
+          if (!headerStr) return;
+          const mappedKey = COLUMN_MAP[headerStr];
+          if (mappedKey) {
+            columnIndices[mappedKey] = index;
+            headerKeyMap[headerStr] = mappedKey;
+          } else {
+            // Dynamic column - use original header as key
+            const safeKey = headerStr;
+            columnIndices[safeKey] = index;
+            headerKeyMap[headerStr] = safeKey;
+            dynamicHeaders.push({ key: safeKey, label: headerStr });
+          }
         });
 
         for (let i = 1; i < jsonData.length; i++) {
@@ -662,6 +746,25 @@ export default function SalesOpportunityDashboard() {
           const status = determineStatus(notaFiscal, dataVenda, pedidoCompra, ordemManutencao, quantidadeFaturada, quantidadePedida, qty);
           const diasEmAberto = dataAbertura ? Math.floor((Date.now() - dataAbertura.getTime()) / (1000 * 60 * 60 * 24)) : 0;
           const diasParaEntrega = previsaoChegada ? Math.floor((previsaoChegada.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+
+          // Collect extra fields (unmapped columns)
+          const extraFields: Record<string, string | number | Date | null> = {};
+          for (const [headerStr, colKey] of Object.entries(headerKeyMap)) {
+            const mappedKey = COLUMN_MAP[headerStr];
+            if (!mappedKey) {
+              const idx = columnIndices[colKey];
+              if (idx !== undefined && row[idx] !== undefined) {
+                const val = row[idx];
+                if (val instanceof Date) {
+                  extraFields[colKey] = val;
+                } else if (typeof val === 'number') {
+                  extraFields[colKey] = val;
+                } else {
+                  extraFields[colKey] = String(val ?? '').trim() || null;
+                }
+              }
+            }
+          }
 
           const record: OpportunityRecord = {
             id: globalId++, origemAba: sheetName, empresa, cliente,
@@ -702,11 +805,14 @@ export default function SalesOpportunityDashboard() {
             quantidadeAFaturar: parseNumber(getValue('quantidadeAFaturar')),
             status, diasEmAberto, diasParaEntrega,
             estoqueDisponivel: lic + betim,
+            extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
           };
           if (empresa || cliente || record.pn) allParsedData.push(record);
         }
+        allDynamicHeaders[sheetName] = dynamicHeaders;
       }
       allParsedData.sort((a, b) => (b.dataAbertura?.getTime() || 0) - (a.dataAbertura?.getTime() || 0));
+      setExcelHeadersByOrigin(allDynamicHeaders);
       setData(allParsedData);
       setPendingFile(null);
       alert(`Importação concluída! ${allParsedData.length} registros carregados de ${SHEET_NAMES.filter(s => workbook.SheetNames.some(n => n.toLowerCase() === s.toLowerCase())).length} abas.`);
@@ -738,6 +844,7 @@ export default function SalesOpportunityDashboard() {
           'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
           'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
           'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
+          ...(d.extraFields || {}),
         }));
       } else {
         exportData = sheetData.map(d => ({
@@ -765,6 +872,7 @@ export default function SalesOpportunityDashboard() {
           'Número do processo importação': d.numeroProcessoImportacao,
           'Número da NF': d.numeroNF, 'Data de emissão da NF': formatDateBR(d.dataEmissaoNF),
           'Observação': d.observacao,
+          ...(d.extraFields || {}),
         }));
       }
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -791,7 +899,8 @@ export default function SalesOpportunityDashboard() {
         dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
         dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
         dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
-      }))
+      })),
+      excelHeadersByOrigin,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -864,8 +973,24 @@ export default function SalesOpportunityDashboard() {
         diasEmAberto: Number(d.diasEmAberto) || 0,
         diasParaEntrega: d.diasParaEntrega ? Number(d.diasParaEntrega) : null,
         estoqueDisponivel: Number(d.estoqueDisponivel) || 0,
+        extraFields: d.extraFields ? (() => {
+          const ef: Record<string, string | number | Date | null> = {};
+          for (const [k, v] of Object.entries(d.extraFields as Record<string, unknown>)) {
+            if (v instanceof Date || (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}T/))) {
+              ef[k] = new Date(v as string);
+            } else if (typeof v === 'number') {
+              ef[k] = v;
+            } else {
+              ef[k] = v != null ? String(v) : null;
+            }
+          }
+          return ef;
+        })() : undefined,
       }));
       setData(parsedData);
+      if (jsonData.excelHeadersByOrigin) {
+        setExcelHeadersByOrigin(jsonData.excelHeadersByOrigin);
+      }
       setShowJsonImportModal(false);
       setPendingJsonFile(null);
       alert(`Importação JSON concluída! ${parsedData.length} registros carregados.`);
@@ -948,7 +1073,7 @@ export default function SalesOpportunityDashboard() {
   const handleSaveColumnConfig = () => {
     // Only keep columns that belong to current origin
     const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
-    const originKeys = (COLUMNS_BY_ORIGIN[origin] || []).map(c => c.key);
+    const originKeys = allAvailableColumns.map(c => c.key);
     const filtered = tempVisibleColumns.filter(c => originKeys.includes(c));
     setVisibleColumns(filtered);
     localStorage.setItem('dashboard_oportunidades_columns', JSON.stringify({ origin, columns: filtered }));
@@ -959,10 +1084,10 @@ export default function SalesOpportunityDashboard() {
     if (showColumnConfigModal) {
       // Only include columns that belong to current origin
       const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
-      const originKeys = (COLUMNS_BY_ORIGIN[origin] || []).map(c => c.key);
+      const originKeys = allAvailableColumns.map(c => c.key);
       setTempVisibleColumns(visibleColumns.filter(c => originKeys.includes(c)));
     }
-  }, [showColumnConfigModal, visibleColumns, oppOrigemFilter]);
+  }, [showColumnConfigModal, visibleColumns, oppOrigemFilter, allAvailableColumns]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -977,7 +1102,7 @@ export default function SalesOpportunityDashboard() {
 
   const handleAddColumn = (key: string) => setTempVisibleColumns([...tempVisibleColumns, key]);
   const handleRemoveColumn = (key: string) => setTempVisibleColumns(tempVisibleColumns.filter(c => c !== key));
-  const handleSelectAll = () => setTempVisibleColumns(currentOriginColumns.map(c => c.key));
+  const handleSelectAll = () => setTempVisibleColumns(allAvailableColumns.map(c => c.key));
   const handleClearAll = () => setTempVisibleColumns([]);
 
   // Helper to render table cells
@@ -1035,7 +1160,17 @@ export default function SalesOpportunityDashboard() {
         }
         return <TableCell className="text-xs text-slate-600">{formatDateBR(record.previsaoChegada)}</TableCell>;
       default:
-        const value = record[columnKey as keyof OpportunityRecord];
+        let value = record[columnKey as keyof OpportunityRecord];
+        if (value === undefined || value === null || value === '') {
+          // Check extra fields for dynamic columns
+          if (record.extraFields && columnKey in record.extraFields) {
+            const efVal = record.extraFields[columnKey];
+            if (efVal instanceof Date) {
+              return <TableCell className="text-xs text-slate-600">{formatDateBR(efVal)}</TableCell>;
+            }
+            return <TableCell className="text-xs text-slate-600">{String(efVal ?? '-')}</TableCell>;
+          }
+        }
         return <TableCell className="text-xs text-slate-600">{String(value || '-')}</TableCell>;
     }
   };
@@ -1678,7 +1813,7 @@ export default function SalesOpportunityDashboard() {
                     <TableHeader className="sticky top-0 bg-slate-50 z-10">
                       <TableRow>
                         {visibleColumns.map((colKey) => {
-                          const column = currentOriginColumns.find(c => c.key === colKey);
+                          const column = allAvailableColumns.find(c => c.key === colKey);
                           return column ? (
                             <TableHead key={colKey} className="text-xs font-semibold text-slate-600 whitespace-nowrap">
                               {column.label}
@@ -1950,7 +2085,7 @@ export default function SalesOpportunityDashboard() {
           <div className="flex items-center gap-2 py-3 border-b">
             <Button variant="outline" size="sm" onClick={handleSelectAll}>Selecionar todas</Button>
             <Button variant="outline" size="sm" onClick={handleClearAll}>Limpar todas</Button>
-            <span className="ml-auto text-sm text-slate-500">{tempVisibleColumns.length} de {currentOriginColumns.length} colunas</span>
+            <span className="ml-auto text-sm text-slate-500">{tempVisibleColumns.length} de {allAvailableColumns.length} colunas</span>
           </div>
           <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 overflow-hidden">
             <div className="flex flex-col min-h-0">
@@ -1962,7 +2097,7 @@ export default function SalesOpportunityDashboard() {
                   <SortableContext items={tempVisibleColumns} strategy={verticalListSortingStrategy}>
                     <div className="space-y-1.5 overflow-y-auto pr-1 flex-1" style={{ maxHeight: 'calc(70vh - 200px)' }}>
                       {tempVisibleColumns.map((columnKey) => {
-                        const column = currentOriginColumns.find(c => c.key === columnKey);
+                        const column = allAvailableColumns.find(c => c.key === columnKey);
                         if (!column) return null;
                         return <SortableColumnItem key={columnKey} column={column} onRemove={handleRemoveColumn} />;
                       })}
@@ -1974,7 +2109,7 @@ export default function SalesOpportunityDashboard() {
             <div className="flex flex-col min-h-0">
               <h3 className="text-sm font-semibold text-slate-700 mb-2 shrink-0">Colunas Disponíveis</h3>
               <div className="space-y-1 overflow-y-auto pr-1 flex-1" style={{ maxHeight: 'calc(70vh - 200px)' }}>
-                {currentOriginColumns.filter(col => !tempVisibleColumns.includes(col.key)).map((column) => (
+                {allAvailableColumns.filter(col => !tempVisibleColumns.includes(col.key)).map((column) => (
                   <div key={column.key} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-md transition-colors cursor-pointer" onClick={() => handleAddColumn(column.key)}>
                     <div className="h-4 w-4 border border-slate-300 rounded flex items-center justify-center shrink-0">
                       <Plus className="h-3 w-3 text-slate-400" />
@@ -1982,7 +2117,7 @@ export default function SalesOpportunityDashboard() {
                     <span className="text-sm text-slate-600 flex-1">{column.label}</span>
                   </div>
                 ))}
-                {currentOriginColumns.filter(col => !tempVisibleColumns.includes(col.key)).length === 0 && (
+                {allAvailableColumns.filter(col => !tempVisibleColumns.includes(col.key)).length === 0 && (
                   <div className="p-4 text-center text-sm text-slate-400">Todas as colunas selecionadas</div>
                 )}
               </div>
