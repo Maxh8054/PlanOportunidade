@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useRef, useEffect } from 'react';
+     4→import * as XLSX from 'xlsx';
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from '@/components/ui/card';
+    11→import {
+    12→  Select,
+    13→  SelectContent,
+    14→  SelectItem,
+    15→  SelectTrigger,
+    16→  SelectValue,
+    17→} from '@/components/ui/select';
+    18→import { Badge } from '@/components/ui/badge';
+    19→import { Button } from '@/components/ui/button';
+    20→import { Input } from '@/components/ui/input';
+    21→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    22→import {
+    23→  Table,
+    24→  TableBody,
+    25→  TableCell,
+    26→  TableHead,
+    27→  TableHeader,
+    28→  TableRow,
+    29→} from '@/components/ui/table';
+    30→import {
+    31→  XAxis,
+    32→  YAxis,
+    33→  CartesianGrid,
+    34→  Tooltip,
+    35→  Legend,
+    36→  ResponsiveContainer,
+    37→  BarChart,
+    38→  Bar,
+    39→  PieChart,
+    40→  Pie,
+    41→  Cell,
+    42→} from 'recharts';
+    43→import {
+    44→  Upload,
+    45→  FileSpreadsheet,
+    46→  Download,
+    47→  ShoppingCart,
+    48→  BarChart3,
+    49→  Target,
+    50→  Package,
+    51→  Wrench,
+    52→  TrendingUp,
+    53→  Filter,
+    54→  ChevronDown,
+    55→  X,
+    56→  MessageSquare,
+    57→  Plus,
+    58→  MessageCircle,
+    59→  FileJson,
+    60→  Clock,
+    61→  CheckCircle,
+    62→  RefreshCw,
+    63→  Settings,
+    64→  Trash2,
+    65→  GripVertical,
+    66→} from 'lucide-react';
+    67→import { PasswordModal } from '@/components/PasswordModal';
+    68→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+    69→import { Textarea } from '@/components/ui/textarea';
+    70→import { Checkbox } from '@/components/ui/checkbox';
+    71→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+    72→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+    73→import { FilterDropdown } from '@/components/FilterDropdown';
+    74→import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+    75→import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+    76→import { CSS } from '@dnd-kit/utilities';
+    77→
+    78→import type { OpportunityRecord } from '@/components/opportunity/types';
+    79→import {
+    80→  SHEET_NAMES,
+    81→  SHEET_DISPLAY_NAMES,
+    82→  COLORS,
+    83→  CRITICITY_COLORS,
+    84→  STATUS_CONFIG,
+    85→  PIE_COLORS,
+    86→  MONTHS,
+    87→  COLUMN_MAP,
+    88→  COLUMNS_BY_ORIGIN,
+    89→  DEFAULT_COLUMNS_BY_ORIGIN,
+    90→} from '@/components/opportunity/constants';
+    91→import {
+    92→  parseDate,
+    93→  parseNumber,
+    94→  parseCriticidade,
+    95→  determineStatus,
+    96→  getStockInfo,
+    97→  formatDateBR,
+    98→} from '@/components/opportunity/utils';
+    99→
+   100→// Sortable Column Item for Drag and Drop
+   101→function SortableColumnItem({ column, onRemove }: { column: { key: string; label: string }; onRemove: (key: string) => void }) {
+   102→  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: column.key });
+   103→  const style = { transform: CSS.Transform.toString(transform), transition };
+   104→  return (
+   105→    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors">
+   106→      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 shrink-0">
+   107→        <GripVertical className="h-4 w-4" />
+   108→      </button>
+   109→      <span className="flex-1 text-sm text-slate-700 truncate">{column.label}</span>
+   110→      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0" onClick={() => onRemove(column.key)}>
+   111→        <X className="h-3.5 w-3.5" />
+   112→      </Button>
+   113→    </div>
+   114→  );
+   115→}
+   116→
+   117→// Stock Badge Component
+   118→function AnaliseEstoqueBadge({ record }: { record: OpportunityRecord }) {
+   119→  const info = getStockInfo(record);
+   120→  return (
+   121→    <div className="flex flex-col items-center gap-1">
+   122→      <Badge style={{ backgroundColor: info.bgColor, color: info.textColor }}>
+   123→        {info.localEstoque}
+   124→      </Badge>
+   125→      <span className="text-xs text-slate-500">
+   126→        {info.coberturaTotal ? '✓' : `Falta: ${info.saldo}`}
+   127→      </span>
+   128→    </div>
+   129→  );
+   130→}
+   131→
+   132→export default function SalesOpportunityDashboard() {
+   133→  const [data, setData] = useState<OpportunityRecord[]>([]);
+   134→  const [isLoading, setIsLoading] = useState(false);
+   135→  const [isSyncing, setIsSyncing] = useState(false);
+   136→  const [lastSync, setLastSync] = useState<string | null>(null);
+   137→  const [showPasswordModal, setShowPasswordModal] = useState(false);
+   138→  const [pendingFile, setPendingFile] = useState<File | null>(null);
+   139→  const [activeTab, setActiveTab] = useState('overview');
+   140→  const fileInputRef = useRef<HTMLInputElement>(null);
+   141→  const hasLoadedRef = useRef(false);
+   142→
+   143→  // Column configuration state
+   144→  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+   145→  const [showColumnConfigModal, setShowColumnConfigModal] = useState(false);
+   146→  const [showColumnConfigPassword, setShowColumnConfigPassword] = useState(false);
+   147→  const [tempVisibleColumns, setTempVisibleColumns] = useState<string[]>([]);
+   148→  const sensors = useSensors(useSensor(PointerSensor));
+   149→
+   150→  // Dynamic Excel column headers per origin (columns not in COLUMNS_BY_ORIGIN)
+   151→  const [excelHeadersByOrigin, setExcelHeadersByOrigin] = useState<Record<string, { key: string; label: string }[]>>({});
+   152→
+   153→  // Helper: parse dates from JSON
+   154→  const parseDates = (d: Record<string, unknown>, index: number): Record<string, unknown> => {
+   155→    const parsed: Record<string, unknown> = {
+   156→      ...d,
+   157→      id: index + 1,
+   158→      dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
+   159→      dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
+   160→      dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
+   161→      previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
+   162→      dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
+   163→      dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
+   164→      dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
+   165→      dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
+   166→      dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
+   167→      dataDisponibilidade: d.dataDisponibilidade ? new Date(d.dataDisponibilidade as string) : null,
+   168→    };
+   169→    // Parse dates in extraFields
+   170→    if (d.extraFields && typeof d.extraFields === 'object') {
+   171→      const ef = d.extraFields as Record<string, unknown>;
+   172→      const parsedEf: Record<string, unknown> = {};
+   173→      for (const [k, v] of Object.entries(ef)) {
+   174→        if (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}T/)) {
+   175→          parsedEf[k] = new Date(v);
+   176→        } else {
+   177→          parsedEf[k] = v;
+   178→        }
+   179→      }
+   180→      parsed.extraFields = parsedEf;
+   181→    }
+   182→    return parsed;
+   183→  };
+   184→
+   185→  // Helper: serialize dates to JSON
+   186→  const serializeData = (records: OpportunityRecord[]) => records.map(d => {
+   187→    const serialized: Record<string, unknown> = {
+   188→      ...d,
+   189→      dataAbertura: d.dataAbertura?.toISOString() || null,
+   190→      dataTroca: d.dataTroca?.toISOString() || null,
+   191→      dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
+   192→      previsaoChegada: d.previsaoChegada?.toISOString() || null,
+   193→      dataVenda: d.dataVenda?.toISOString() || null,
+   194→      dataFollowUp: d.dataFollowUp?.toISOString() || null,
+   195→      dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
+   196→      dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
+   197→      dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
+   198→      dataDisponibilidade: (d as unknown as Record<string, unknown>).dataDisponibilidade instanceof Date ? (d as unknown as Record<string, unknown>).dataDisponibilidade : null,
+   199→    };
+   200→    // Serialize dates in extraFields
+   201→    if (d.extraFields) {
+   202→      const serializedEf: Record<string, unknown> = {};
+   203→      for (const [k, v] of Object.entries(d.extraFields)) {
+   204→        if (v instanceof Date) {
+   205→          serializedEf[k] = v.toISOString();
+   206→        } else {
+   207→          serializedEf[k] = v;
+   208→        }
+   209→      }
+   210→      serialized.extraFields = serializedEf;
+   211→    }
+   212→    return serialized;
+   213→  });
+   214→
+   215→  // Load from API on mount
+   216→  useEffect(() => {
+   217→    if (hasLoadedRef.current) return;
+   218→    hasLoadedRef.current = true;
+   219→    loadData();
+   220→  }, []);
+   221→
+   222→  async function loadData() {
+   223→    setIsSyncing(true);
+   224→    try {
+   225→      const res = await fetch('/api/dashboard-data');
+   226→      const json = await res.json();
+   227→      if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+   228→        const parsed = json.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord);
+   229→        setData(parsed);
+   230→        if (json.excelHeadersByOrigin) {
+   231→          setExcelHeadersByOrigin(json.excelHeadersByOrigin);
+   232→        }
+   233→        setLastSync(json.updatedAt ? new Date(json.updatedAt).toLocaleString('pt-BR') : new Date().toLocaleString('pt-BR'));
+   234→      } else {
+   235→        // Fallback to localStorage
+   236→        try {
+   237→          const saved = localStorage.getItem('dashboard_oportunidades_data');
+   238→          if (saved) {
+   239→            const parsed = JSON.parse(saved);
+   240→            if (parsed.data && Array.isArray(parsed.data)) {
+   241→              setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+   242→            }
+   243→            if (parsed.excelHeadersByOrigin) {
+   244→              setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
+   245→            }
+   246→          }
+   247→        } catch { /* ignore */ }
+   248→      }
+   249→    } catch {
+   250→      // API not available (local dev) - fallback to localStorage
+   251→      try {
+   252→        const saved = localStorage.getItem('dashboard_oportunidades_data');
+   253→        if (saved) {
+   254→          const parsed = JSON.parse(saved);
+   255→          if (parsed.data && Array.isArray(parsed.data)) {
+   256→            setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+   257→          }
+   258→          if (parsed.excelHeadersByOrigin) {
+   259→            setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
+   260→          }
+   261→        }
+   262→      } catch { /* ignore */ }
+   263→    } finally {
+   264→      setIsSyncing(false);
+   265→    }
+   266→  }
+   267→
+   268→  // Column config is now loaded based on origin in the useEffect above
+   269→
+   270→  // Save to API + localStorage whenever data changes
+   271→  useEffect(() => {
+   272→    if (data.length === 0) return;
+   273→    // Always save to localStorage
+   274→    const exportData = {
+   275→      exportDate: new Date().toISOString(),
+   276→      totalRecords: data.length,
+   277→      data: serializeData(data),
+   278→      excelHeadersByOrigin,
+   279→    };
+   280→    localStorage.setItem('dashboard_oportunidades_data', JSON.stringify(exportData));
+   281→    // Try to save to API (don't await, fire and forget)
+   282→    fetch('/api/dashboard-data', {
+   283→      method: 'POST',
+   284→      headers: { 'Content-Type': 'application/json' },
+   285→      body: JSON.stringify({ data: serializeData(data), totalRecords: data.length }),
+   286→    }).then(res => res.json()).then(json => {
+   287→      if (json.success) {
+   288→        setLastSync(new Date().toLocaleString('pt-BR'));
+   289→      } else {
+   290→        console.error('Sync failed:', json.error);
+   291→      }
+   292→    }).catch(err => {
+   293→      console.error('Sync failed:', err);
+   294→    });
+   295→  }, [data]);
+   296→
+   297→  // Overview Filters
+   298→  const [empresaFilter, setEmpresaFilter] = useState<string[]>([]);
+   299→  const [clienteFilter, setClienteFilter] = useState<string[]>([]);
+   300→  const [equipamentoFilter, setEquipamentoFilter] = useState<string[]>([]);
+   301→  const [criticidadeFilter, setCriticidadeFilter] = useState<string[]>([]);
+   302→  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+   303→  const [periodFilter, setPeriodFilter] = useState<string[]>([]);
+   304→  const [searchTerm, setSearchTerm] = useState('');
+   305→  const [estoqueFilter, setEstoqueFilter] = useState<string[]>([]);
+   306→  const [rankingType, setRankingType] = useState<'inspecao' | 'venda'>('inspecao');
+   307→  const [chartYearFilter, setChartYearFilter] = useState<string>('');
+   308→  const [showOverviewFilters, setShowOverviewFilters] = useState(false);
+   309→  const [showOppFilters, setShowOppFilters] = useState(false);
+   310→
+   311→  // Opportunities Tab Filters (multi-select)
+   312→  const [oppMonthFilter, setOppMonthFilter] = useState<string[]>([]);
+   313→  const [oppYearFilter, setOppYearFilter] = useState<string[]>([]);
+   314→  const [oppClienteFilter, setOppClienteFilter] = useState<string[]>([]);
+   315→  const [oppStatusFilter, setOppStatusFilter] = useState<string[]>([]);
+   316→  const [oppCriticidadeFilter, setOppCriticidadeFilter] = useState<string[]>([]);
+   317→  const [oppDiasFilter, setOppDiasFilter] = useState<string[]>([]);
+   318→  const [oppAnaliseFilter, setOppAnaliseFilter] = useState<string[]>([]);
+   319→  const [oppPrazoFilter, setOppPrazoFilter] = useState<string[]>([]);
+   320→  const [oppSearchTerm, setOppSearchTerm] = useState('');
+   321→  const [oppOrigemFilter, setOppOrigemFilter] = useState<string[]>(() => {
+   322→    const lundinIdx = SHEET_NAMES.findIndex(n => n.toLowerCase().includes('lundin'));
+   323→    return lundinIdx >= 0 ? [SHEET_NAMES[lundinIdx]] : (SHEET_NAMES.length > 0 ? [SHEET_NAMES[0]] : []);
+   324→  });
+   325→
+   326→  // Follow Up Modal State
+   327→  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+   328→  const [followUpRecord, setFollowUpRecord] = useState<OpportunityRecord | null>(null);
+   329→  const [followUpText, setFollowUpText] = useState('');
+   330→  const [applyToAllPedido, setApplyToAllPedido] = useState(false);
+   331→  const [applyToAllOM, setApplyToAllOM] = useState(false);
+   332→  const [deleteMode, setDeleteMode] = useState(false);
+   333→
+   334→  // JSON import state
+   335→  const jsonFileInputRef = useRef<HTMLInputElement>(null);
+   336→  const [showJsonImportModal, setShowJsonImportModal] = useState(false);
+   337→  const [pendingJsonFile, setPendingJsonFile] = useState<File | null>(null);
+   338→
+   339→  // Available filter options
+   340→  const empresas = useMemo(() => [...new Set(data.map(d => d.empresa).filter(Boolean))].sort(), [data]);
+   341→  const clientes = useMemo(() => [...new Set(data.map(d => d.cliente).filter(Boolean))].sort(), [data]);
+   342→  const equipamentos = useMemo(() => [...new Set(data.map(d => d.equipamento).filter(Boolean))].sort(), [data]);
+   343→  const criticidades = useMemo(() => [...new Set(data.map(d => d.criticidade).filter(Boolean))].sort(), [data]);
+   344→  const origens = useMemo(() => [...new Set(data.map(d => d.origemAba).filter(Boolean))].sort(), [data]);
+   345→
+   346→  // Memoized option arrays for FilterDropdowns
+   347→  const empresaOptions = useMemo(() => empresas.map(e => ({ value: e, label: e })), [empresas]);
+   348→  const clienteOptions = useMemo(() => clientes.map(c => ({ value: c, label: c })), [clientes]);
+   349→  const equipamentoOptions = useMemo(() => equipamentos.map(e => ({ value: e, label: e })), [equipamentos]);
+   350→  const criticidadeOptions = useMemo(() => criticidades.map(c => ({ value: c, label: c })), [criticidades]);
+   351→  const statusOptions = useMemo(() => Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label })), []);
+   352→  const origemOptions = useMemo(() => origens.map(o => ({ value: o, label: o.replace('PAS SVS ', '') })), [origens]);
+   353→  const monthOptions = useMemo(() => MONTHS.map(m => ({ value: m.value, label: m.label })), []);
+   354→  const diasOptions = useMemo(() => [
+   355→    { value: '<30', label: '< 30 dias' },
+   356→    { value: '30-60', label: '30-60 dias' },
+   357→    { value: '>60', label: '> 60 dias' },
+   358→    { value: '>90', label: '> 90 dias' },
+   359→  ] as const, []);
+   360→  const analiseOptions = useMemo(() => [
+   361→    { value: 'completos', label: 'Completos' },
+   362→    { value: 'incompletos', label: 'Incompletos' },
+   363→    { value: 'com_followup', label: 'Com Follow Up' },
+   364→    { value: 'sem_followup', label: 'Sem Follow Up' },
+   365→  ] as const, []);
+   366→  const prazoOptions = useMemo(() => [
+   367→    { value: 'atrasados', label: 'Atrasados' },
+   368→    { value: 'este_mes', label: 'Este Mês' },
+   369→    { value: 'futuro', label: 'Futuro' },
+   370→  ] as const, []);
+   371→  const periodoOptions = useMemo(() => [
+   372→    { value: '7d', label: 'Últimos 7 dias' },
+   373→    { value: '30d', label: 'Últimos 30 dias' },
+   374→    { value: '90d', label: 'Últimos 90 dias' },
+   375→    { value: '2024', label: '2024' },
+   376→    { value: '2025', label: '2025' },
+   377→    { value: '2026', label: '2026' },
+   378→  ] as const, []);
+   379→  const estoqueOptions = useMemo(() => [
+   380→    { value: 'lic', label: 'Com LIC' },
+   381→    { value: 'betim', label: 'Com Betim' },
+   382→  ] as const, []);
+   383→
+   384→  const availableYears = useMemo(() => {
+   385→    const years = new Set<number>();
+   386→    data.forEach(d => {
+   387→      if (d.dataAbertura) years.add(d.dataAbertura.getFullYear());
+   388→    });
+   389→    return Array.from(years).sort().map(y => y.toString());
+   390→  }, [data]);
+   391→
+   392→  const yearOptions = useMemo(() => availableYears.map(y => ({ value: y, label: y })), [availableYears]);
+   393→
+   394→  // Auto-select most recent year for chart
+   395→  const effectiveChartYear = chartYearFilter || (availableYears.length > 0 ? availableYears[availableYears.length - 1] : '');
+   396→  useEffect(() => {
+   397→    if (!chartYearFilter && availableYears.length > 0) {
+   398→      setChartYearFilter(availableYears[availableYears.length - 1]);
+   399→    }
+   400→  }, [availableYears]);
+   401→
+   402→  // Overview filtered data
+   403→  const filteredData = useMemo(() => {
+   404→    let result = data;
+   405→    if (searchTerm) {
+   406→      const search = searchTerm.toLowerCase();
+   407→      result = result.filter(d => {
+   408→        if (d.pn?.toLowerCase().includes(search)) return true;
+   409→        if (d.partname?.toLowerCase().includes(search)) return true;
+   410→        if (d.cliente?.toLowerCase().includes(search)) return true;
+   411→        if (d.descricao?.toLowerCase().includes(search)) return true;
+   412→        if (d.ordemManutencao?.toLowerCase().includes(search)) return true;
+   413→        if (d.pedidoCompra?.toLowerCase().includes(search)) return true;
+   414→        // Search in extra fields
+   415→        if (d.extraFields) {
+   416→          for (const v of Object.values(d.extraFields)) {
+   417→            if (v != null && String(v).toLowerCase().includes(search)) return true;
+   418→          }
+   419→        }
+   420→        return false;
+   421→      });
+   422→    }
+   423→    if (empresaFilter.length > 0) result = result.filter(d => empresaFilter.includes(d.empresa));
+   424→    if (clienteFilter.length > 0) result = result.filter(d => clienteFilter.includes(d.cliente));
+   425→    if (equipamentoFilter.length > 0) result = result.filter(d => equipamentoFilter.includes(d.equipamento));
+   426→    if (criticidadeFilter.length > 0) result = result.filter(d => criticidadeFilter.includes(d.criticidade));
+   427→    if (statusFilter.length > 0) result = result.filter(d => {
+   428→      for (const s of statusFilter) {
+   429→        if (s === 'em_aberto' && d.status !== 'vendido') return true;
+   430→        if (s === 'sem_po' && (d.status === 'sem_om' || d.status === 'com_om')) return true;
+   431→        if (d.status === s) return true;
+   432→      }
+   433→      return false;
+   434→    });
+   435→    if (periodFilter.length > 0) {
+   436→      const now = new Date();
+   437→      result = result.filter(d => {
+   438→        if (!d.dataAbertura) return false;
+   439→        for (const p of periodFilter) {
+   440→          const filterDate = new Date();
+   441→          switch (p) {
+   442→            case '7d': filterDate.setDate(now.getDate() - 7); if (d.dataAbertura >= filterDate) return true; break;
+   443→            case '30d': filterDate.setDate(now.getDate() - 30); if (d.dataAbertura >= filterDate) return true; break;
+   444→            case '90d': filterDate.setDate(now.getDate() - 90); if (d.dataAbertura >= filterDate) return true; break;
+   445→            case '2024': if (d.dataAbertura.getFullYear() === 2024) return true; break;
+   446→            case '2025': if (d.dataAbertura.getFullYear() === 2025) return true; break;
+   447→            case '2026': if (d.dataAbertura.getFullYear() === 2026) return true; break;
+   448→          }
+   449→        }
+   450→        return false;
+   451→      });
+   452→    }
+   453→    if (estoqueFilter.length > 0) {
+   454→      result = result.filter(d => {
+   455→        for (const e of estoqueFilter) {
+   456→          if (e === 'lic' && d.lic > 0) return true;
+   457→          if (e === 'betim' && d.betim > 0) return true;
+   458→        }
+   459→        return false;
+   460→      });
+   461→    }
+   462→    return result;
+   463→  }, [data, searchTerm, empresaFilter, clienteFilter, equipamentoFilter, criticidadeFilter, statusFilter, periodFilter, estoqueFilter]);
+   464→
+   465→  // Opportunities Tab filtered data
+   466→  const oppFilteredData = useMemo(() => {
+   467→    let result = data;
+   468→    if (oppSearchTerm) {
+   469→      const search = oppSearchTerm.toLowerCase();
+   470→      result = result.filter(d => {
+   471→        if (d.pn?.toLowerCase().includes(search)) return true;
+   472→        if (d.partname?.toLowerCase().includes(search)) return true;
+   473→        if (d.cliente?.toLowerCase().includes(search)) return true;
+   474→        if (d.descricao?.toLowerCase().includes(search)) return true;
+   475→        if (d.extraFields) {
+   476→          for (const v of Object.values(d.extraFields)) {
+   477→            if (v != null && String(v).toLowerCase().includes(search)) return true;
+   478→          }
+   479→        }
+   480→        return false;
+   481→      });
+   482→    }
+   483→    if (oppOrigemFilter.length > 0) result = result.filter(d => oppOrigemFilter.includes(d.origemAba));
+   484→    // Origem filter is always required - if somehow empty, show nothing
+   485→    if (oppOrigemFilter.length === 0) return [];
+   486→    if (oppMonthFilter.length > 0) result = result.filter(d => d.dataAbertura && oppMonthFilter.includes(String(d.dataAbertura.getMonth() + 1)));
+   487→    if (oppYearFilter.length > 0) result = result.filter(d => d.dataAbertura && oppYearFilter.includes(String(d.dataAbertura.getFullYear())));
+   488→    if (oppClienteFilter.length > 0) result = result.filter(d => oppClienteFilter.includes(d.cliente));
+   489→    if (oppStatusFilter.length > 0) result = result.filter(d => {
+   490→      for (const s of oppStatusFilter) {
+   491→        if (s === 'em_aberto' && d.status !== 'vendido') return true;
+   492→        if (s === 'sem_po' && (d.status === 'sem_om' || d.status === 'com_om')) return true;
+   493→        if (d.status === s) return true;
+   494→      }
+   495→      return false;
+   496→    });
+   497→    if (oppCriticidadeFilter.length > 0) result = result.filter(d => oppCriticidadeFilter.includes(d.criticidade));
+   498→    if (oppDiasFilter.length > 0) {
+   499→      result = result.filter(d => {
+   500→        for (const f of oppDiasFilter) {
+   501→          if (f === '<30' && d.diasEmAberto < 30) return true;
+   502→          if (f === '30-60' && d.diasEmAberto >= 30 && d.diasEmAberto <= 60) return true;
+   503→          if (f === '>60' && d.diasEmAberto > 60) return true;
+   504→          if (f === '>90' && d.diasEmAberto > 90) return true;
+   505→        }
+   506→        return false;
+   507→      });
+   508→    }
+   509→    if (oppAnaliseFilter.length > 0) {
+   510→      result = result.filter(d => {
+   511→        for (const f of oppAnaliseFilter) {
+   512→          if (f === 'completos' && d.quantidadeFaturada > 0 && d.quantidadeFaturada >= d.qty) return true;
+   513→          if (f === 'incompletos' && (d.quantidadeFaturada === 0 || d.quantidadeFaturada < d.qty)) return true;
+   514→          if (f === 'com_followup' && (d.followUpComercial || d.followUpLocal)) return true;
+   515→          if (f === 'sem_followup' && !d.followUpComercial && !d.followUpLocal) return true;
+   516→        }
+   517→        return false;
+   518→      });
+   519→    }
+   520→    if (oppPrazoFilter.length > 0) {
+   521→      const now = new Date();
+   522→      const cm = now.getMonth();
+   523→      const cy = now.getFullYear();
+   524→      result = result.filter(d => {
+   525→        for (const f of oppPrazoFilter) {
+   526→          if (f === 'atrasados' && d.dataEntregaSolicitada && d.dataEntregaSolicitada < now && d.status !== 'vendido') return true;
+   527→          if (f === 'este_mes' && d.dataEntregaSolicitada && d.dataEntregaSolicitada.getMonth() === cm && d.dataEntregaSolicitada.getFullYear() === cy) return true;
+   528→          if (f === 'futuro' && d.dataEntregaSolicitada && d.dataEntregaSolicitada > now) return true;
+   529→        }
+   530→        return false;
+   531→      });
+   532→    }
+   533→    return result;
+   534→  }, [data, oppSearchTerm, oppMonthFilter, oppYearFilter, oppClienteFilter, oppStatusFilter, oppCriticidadeFilter, oppDiasFilter, oppAnaliseFilter, oppPrazoFilter, oppOrigemFilter]);
+   535→
+   536→  // Current columns based on selected origin
+   537→  const currentOriginColumns = useMemo(() => {
+   538→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   539→    return COLUMNS_BY_ORIGIN[origin] || [];
+   540→  }, [oppOrigemFilter]);
+   541→
+   542→  // All available columns = predefined + dynamic Excel columns
+   543→  const allAvailableColumns = useMemo(() => {
+   544→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   545→    const predefined = COLUMNS_BY_ORIGIN[origin] || [];
+   546→    const dynamic = excelHeadersByOrigin[origin] || [];
+   547→    const predefinedKeys = new Set(predefined.map(c => c.key));
+   548→    const extraDynamic = dynamic.filter(c => !predefinedKeys.has(c.key));
+   549→    return [...predefined, ...extraDynamic];
+   550→  }, [oppOrigemFilter, excelHeadersByOrigin]);
+   551→
+   552→  // When origin changes, reset visible columns to origin defaults (only if user hasn't customized)
+   553→  useEffect(() => {
+   554→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   555→    const savedConfig = localStorage.getItem('dashboard_oportunidades_columns');
+   556→    if (savedConfig) {
+   557→      const parsed = JSON.parse(savedConfig) as { origin?: string; columns?: string[] } | string[];
+   558→      // Check if saved config has origin info and matches current
+   559→      if (Array.isArray(parsed)) {
+   560→        // Old format without origin - reset to defaults for current origin
+   561→        const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   562→        setVisibleColumns(defaults);
+   563→      } else if (parsed.origin === origin && parsed.columns) {
+   564→        setVisibleColumns(parsed.columns);
+   565→      } else {
+   566→        const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   567→        setVisibleColumns(defaults);
+   568→      }
+   569→    } else {
+   570→      const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   571→      setVisibleColumns(defaults);
+   572→    }
+   573→  }, [oppOrigemFilter]);
+   574→
+   575→
+   576→  // KPIs
+   577→  const kpis = useMemo(() => {
+   578→    const totalLinhas = filteredData.length;
+   579→    const totalQty = filteredData.reduce((sum, d) => sum + d.qty, 0);
+   580→    const totalPedidos = new Set(filteredData.filter(d => d.pedidoCompra).map(d => d.pedidoCompra)).size;
+   581→    const totalOMs = new Set(filteredData.filter(d => d.ordemManutencao).map(d => d.ordemManutencao)).size;
+   582→    return { totalLinhas, totalQty, totalPedidos, totalOMs };
+   583→  }, [filteredData]);
+   584→
+   585→  // Opportunities KPIs
+   586→  const oppKpis = useMemo(() => {
+   587→    const totalLinhas = oppFilteredData.length;
+   588→    const totalQty = oppFilteredData.reduce((sum, d) => sum + d.qty, 0);
+   589→    const totalPedidos = new Set(oppFilteredData.filter(d => d.pedidoCompra).map(d => d.pedidoCompra)).size;
+   590→    const totalOMs = new Set(oppFilteredData.filter(d => d.ordemManutencao).map(d => d.ordemManutencao)).size;
+   591→    const linhasFiltradas = oppFilteredData.length;
+   592→    const totalEmAberto = oppFilteredData.filter(d => d.status !== 'vendido' && d.status !== 'faturado_parcial').length;
+   593→    const totalVendido = oppFilteredData.reduce((sum, d) => sum + d.quantidadeFaturada, 0);
+   594→    const totalNF = new Set(oppFilteredData.filter(d => d.notaFiscal).map(d => d.notaFiscal)).size;
+   595→    const faturadoParcial = oppFilteredData.filter(d => d.status === 'faturado_parcial').length;
+   596→    return { totalLinhas, totalQty, totalPedidos, totalOMs, linhasFiltradas, totalEmAberto, totalVendido, totalNF, faturadoParcial };
+   597→  }, [oppFilteredData]);
+   598→
+   599→  // Charts data
+   600→  const clientChartData = useMemo(() => {
+   601→    const clientData: Record<string, { qty: number; vendido: number }> = {};
+   602→    filteredData.forEach(d => {
+   603→      if (d.cliente) {
+   604→        if (!clientData[d.cliente]) clientData[d.cliente] = { qty: 0, vendido: 0 };
+   605→        clientData[d.cliente].qty += d.qty;
+   606→        if (d.status === 'vendido') clientData[d.cliente].vendido += d.qty;
+   607→      }
+   608→    });
+   609→    return Object.entries(clientData)
+   610→      .sort((a, b) => b[1].qty - a[1].qty)
+   611→      .slice(0, 10)
+   612→      .map(([name, d]) => ({ name, Quantidade: d.qty, Vendido: d.vendido }));
+   613→  }, [filteredData]);
+   614→
+   615→  const equipmentChartData = useMemo(() => {
+   616→    const counts: Record<string, number> = {};
+   617→    filteredData.forEach(d => { if (d.equipamento) counts[d.equipamento] = (counts[d.equipamento] || 0) + d.qty; });
+   618→    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value }));
+   619→  }, [filteredData]);
+   620→
+   621→  const criticityChartData = useMemo(() => {
+   622→    const counts: Record<string, number> = { 'Baixa': 0, 'Média': 0, 'Alta': 0 };
+   623→    filteredData.forEach(d => {
+   624→      if (d.criticidade === 'Alta') counts['Alta']++;
+   625→      else if (d.criticidade === 'Média') counts['Média']++;
+   626→      else counts['Baixa']++;
+   627→    });
+   628→    return [
+   629→      { name: 'Baixa', value: counts['Baixa'], color: CRITICITY_COLORS['Baixa'] },
+   630→      { name: 'Média', value: counts['Média'], color: CRITICITY_COLORS['Média'] },
+   631→      { name: 'Alta', value: counts['Alta'], color: CRITICITY_COLORS['Alta'] },
+   632→    ].filter(d => d.value > 0);
+   633→  }, [filteredData]);
+   634→
+   635→  const statusChartData = useMemo(() => {
+   636→    const counts: Record<string, number> = {};
+   637→    filteredData.forEach(d => { counts[d.status] = (counts[d.status] || 0) + 1; });
+   638→    return Object.entries(counts).map(([name, value]) => ({ name: STATUS_CONFIG[name]?.label || name, value }));
+   639→  }, [filteredData]);
+   640→
+   641→  const monthlyChartData = useMemo(() => {
+   642→    const monthCounts: Record<string, number> = {};
+   643→    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+   644→    filteredData.forEach(d => {
+   645→      if (d.dataAbertura) {
+   646→        if (effectiveChartYear && d.dataAbertura.getFullYear() !== parseInt(effectiveChartYear)) return;
+   647→        const key = `${monthNames[d.dataAbertura.getMonth()]}/${d.dataAbertura.getFullYear()}`;
+   648→        monthCounts[key] = (monthCounts[key] || 0) + d.qty;
+   649→      }
+   650→    });
+   651→    return Object.entries(monthCounts)
+   652→      .sort((a, b) => {
+   653→        const [aM, aY] = a[0].split('/');
+   654→        const [bM, bY] = b[0].split('/');
+   655→        return (parseInt(aY) * 12 + monthNames.indexOf(aM)) - (parseInt(bY) * 12 + monthNames.indexOf(bM));
+   656→      })
+   657→      .map(([name, value]) => ({ name, value }));
+   658→  }, [filteredData, effectiveChartYear]);
+   659→
+   660→  const origemChartData = useMemo(() => {
+   661→    const counts: Record<string, number> = {};
+   662→    data.forEach(d => {
+   663→      if (d.origemAba) { const label = d.origemAba.replace('PAS SVS ', ''); counts[label] = (counts[label] || 0) + 1; }
+   664→    });
+   665→    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+   666→  }, [data]);
+   667→
+   668→  // Ranking data - only by equipamento (column D)
+   669→  const rankingData = useMemo(() => {
+   670→    const items: Record<string, { inspecao: number; venda: number }> = {};
+   671→    filteredData.forEach(d => {
+   672→      if (!d.equipamento) return;
+   673→      const name = d.equipamento;
+   674→      if (!items[name]) items[name] = { inspecao: 0, venda: 0 };
+   675→      items[name].inspecao += d.qty;
+   676→      items[name].venda += d.quantidadeFaturada;
+   677→    });
+   678→    return Object.entries(items)
+   679→      .sort((a, b) => b[1][rankingType] - a[1][rankingType])
+   680→      .map(([name, counts], i) => ({ position: i + 1, name, inspecao: counts.inspecao, venda: counts.venda }));
+   681→  }, [filteredData, rankingType]);
+   682→
+   683→  // File handling
+   684→  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+   685→    const file = event.target.files?.[0];
+   686→    if (!file) return;
+   687→    setPendingFile(file);
+   688→    setShowPasswordModal(true);
+   689→    if (fileInputRef.current) fileInputRef.current.value = '';
+   690→  };
+   691→
+   692→  const handleImportConfirmed = async () => {
+   693→    if (!pendingFile) return;
+   694→    setIsLoading(true);
+   695→    try {
+   696→      const fileData = await pendingFile.arrayBuffer();
+   697→      const workbook = XLSX.read(fileData);
+   698→      const allParsedData: OpportunityRecord[] = [];
+   699→      let globalId = 1;
+   700→      const allDynamicHeaders: Record<string, { key: string; label: string }[]> = {};
+   701→
+   702→      for (const sheetName of SHEET_NAMES) {
+   703→        const actualSheetName = workbook.SheetNames.find(n => n.toLowerCase() === sheetName.toLowerCase());
+   704→        if (!actualSheetName) { console.warn(`Aba "${sheetName}" não encontrada`); continue; }
+   705→        const worksheet = workbook.Sheets[actualSheetName];
+   706→        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+   707→        if (jsonData.length < 2) continue;
+   708→        const headers = jsonData[0] as string[];
+   709→        const columnIndices: Record<string, number> = {};
+   710→        const dynamicHeaders: { key: string; label: string }[] = [];
+   711→        const headerKeyMap: Record<string, string> = {}; // original header -> final key (mapped or raw)
+   712→        headers.forEach((header, index) => {
+   713→          const headerStr = header?.toString().trim();
+   714→          if (!headerStr) return;
+   715→          const mappedKey = COLUMN_MAP[headerStr];
+   716→          if (mappedKey) {
+   717→            columnIndices[mappedKey] = index;
+   718→            headerKeyMap[headerStr] = mappedKey;
+   719→          } else {
+   720→            // Dynamic column - use original header as key
+   721→            const safeKey = headerStr;
+   722→            columnIndices[safeKey] = index;
+   723→            headerKeyMap[headerStr] = safeKey;
+   724→            dynamicHeaders.push({ key: safeKey, label: headerStr });
+   725→          }
+   726→        });
+   727→
+   728→        for (let i = 1; i < jsonData.length; i++) {
+   729→          const row = jsonData[i] as unknown[];
+   730→          if (!row || row.length === 0) continue;
+   731→          const getValue = (key: string): unknown => { const idx = columnIndices[key]; return idx !== undefined ? row[idx] : undefined; };
+   732→          const empresa = String(getValue('empresa') || '').trim();
+   733→          const cliente = String(getValue('cliente') || '').trim();
+   734→          const qty = parseNumber(getValue('qty'));
+   735→          const lic = parseNumber(getValue('lic'));
+   736→          const betim = parseNumber(getValue('betim'));
+   737→          const criticidade = parseCriticidade(String(getValue('criticidade') || 'Baixa'));
+   738→          const dataAbertura = parseDate(getValue('dataAbertura'));
+   739→          const dataVenda = parseDate(getValue('dataVenda'));
+   740→          const notaFiscal = String(getValue('notaFiscal') || getValue('numeroNF') || '').trim();
+   741→          const pedidoCompra = String(getValue('pedidoCompra') || '').trim();
+   742→          const previsaoChegada = parseDate(getValue('previsaoChegada'));
+   743→          const ordemManutencao = String(getValue('ordemManutencao') || '').trim();
+   744→          const quantidadePedida = parseNumber(getValue('quantidadePedida'));
+   745→          const quantidadeFaturada = parseNumber(getValue('quantidadeFaturada'));
+   746→          const status = determineStatus(notaFiscal, dataVenda, pedidoCompra, ordemManutencao, quantidadeFaturada, quantidadePedida, qty);
+   747→          const diasEmAberto = dataAbertura ? Math.floor((Date.now() - dataAbertura.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+   748→          const diasParaEntrega = previsaoChegada ? Math.floor((previsaoChegada.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+   749→
+   750→          // Collect extra fields (unmapped columns)
+   751→          const extraFields: Record<string, string | number | Date | null> = {};
+   752→          for (const [headerStr, colKey] of Object.entries(headerKeyMap)) {
+   753→            const mappedKey = COLUMN_MAP[headerStr];
+   754→            if (!mappedKey) {
+   755→              const idx = columnIndices[colKey];
+   756→              if (idx !== undefined && row[idx] !== undefined) {
+   757→                const val = row[idx];
+   758→                if (val instanceof Date) {
+   759→                  extraFields[colKey] = val;
+   760→                } else if (typeof val === 'number') {
+   761→                  extraFields[colKey] = val;
+   762→                } else {
+   763→                  extraFields[colKey] = String(val ?? '').trim() || null;
+   764→                }
+   765→              }
+   766→            }
+   767→          }
+   768→
+   769→          const record: OpportunityRecord = {
+   770→            id: globalId++, origemAba: sheetName, empresa, cliente,
+   771→            descricao: String(getValue('descricao') || '').trim(),
+   772→            equipamento: String(getValue('equipamento') || '').trim(),
+   773→            dataAbertura, mes: String(getValue('mes') || '').trim(),
+   774→            pn: String(getValue('pn') || '').trim(),
+   775→            partname: String(getValue('partname') || '').trim(),
+   776→            qty, criticidade, betim, lic,
+   777→            emEstoque: String(getValue('emEstoque') || '').trim(),
+   778→            importacao: parseNumber(getValue('importacao')),
+   779→            dataTroca: parseDate(getValue('dataTroca')),
+   780→            dataAberturaOM: parseDate(getValue('dataAberturaOM')),
+   781→            ordemManutencao, pedidoCompra,
+   782→            requisicaoCompra: String(getValue('requisicaoCompra') || '').trim(),
+   783→            previsaoChegada, notaFiscal, dataVenda,
+   784→            followUpComercial: String(getValue('followUpComercial') || '').trim(),
+   785→            followUpLocal: '', dataFollowUp: null,
+   786→            vinculoPasSvs: String(getValue('vinculoPasSvs') || '').trim(),
+   787→            numeroPedido: String(getValue('numeroPedido') || '').trim(),
+   788→            dataRecebimentoPedido: parseDate(getValue('dataRecebimentoPedido')),
+   789→            tipoPedido: String(getValue('tipoPedido') || '').trim(),
+   790→            dataEntregaSolicitada: parseDate(getValue('dataEntregaSolicitada')),
+   791→            partNumber: String(getValue('partNumber') || '').trim(),
+   792→            replace: String(getValue('replace') || '').trim(),
+   793→            descricao1: String(getValue('descricao1') || '').trim(),
+   794→            quantidadePedida,
+   795→            disponibilidade: String(getValue('disponibilidade') || '').trim(),
+   796→            quantidadeFaturada,
+   797→            numeroCigam: String(getValue('numeroCigam') || '').trim(),
+   798→            numeroProcessoImportacao: String(getValue('numeroProcessoImportacao') || '').trim(),
+   799→            numeroNF: String(getValue('numeroNF') || '').trim(),
+   800→            dataEmissaoNF: parseDate(getValue('dataEmissaoNF')),
+   801→            observacao: String(getValue('observacao') || '').trim(),
+   802→            cliente1: String(getValue('cliente1') || '').trim(),
+   803→            quantidadeEmEstoque: parseNumber(getValue('quantidadeEmEstoque')),
+   804→            dataDisponibilidade: parseDate(getValue('dataDisponibilidade')),
+   805→            quantidadeAFaturar: parseNumber(getValue('quantidadeAFaturar')),
+   806→            status, diasEmAberto, diasParaEntrega,
+   807→            estoqueDisponivel: lic + betim,
+   808→            extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+   809→          };
+   810→          if (empresa || cliente || record.pn) allParsedData.push(record);
+   811→        }
+   812→        allDynamicHeaders[sheetName] = dynamicHeaders;
+   813→      }
+   814→      allParsedData.sort((a, b) => (b.dataAbertura?.getTime() || 0) - (a.dataAbertura?.getTime() || 0));
+   815→      setExcelHeadersByOrigin(allDynamicHeaders);
+   816→      setData(allParsedData);
+   817→      setPendingFile(null);
+   818→      alert(`Importação concluída! ${allParsedData.length} registros carregados de ${SHEET_NAMES.filter(s => workbook.SheetNames.some(n => n.toLowerCase() === s.toLowerCase())).length} abas.`);
+   819→    } catch (error) {
+   820→      console.error('Erro ao importar:', error);
+   821→      alert('Erro ao importar arquivo! Verifique o formato.');
+   822→    } finally { setIsLoading(false); }
+   823→  };
+   824→
+   825→  const exportToExcel = (tipo: 'completo' | 'servicos') => {
+   826→    if (data.length === 0) return;
+   827→    const wb = XLSX.utils.book_new();
+   828→    const dataByOrigin: Record<string, OpportunityRecord[]> = {};
+   829→    data.forEach(d => { if (!dataByOrigin[d.origemAba]) dataByOrigin[d.origemAba] = []; dataByOrigin[d.origemAba].push(d); });
+   830→
+   831→    SHEET_NAMES.forEach(sheetName => {
+   832→      const sheetData = dataByOrigin[sheetName] || [];
+   833→      let exportData: Record<string, unknown>[];
+   834→      if (tipo === 'servicos') {
+   835→        exportData = sheetData.map(d => ({
+   836→          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+   837→          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+   838→          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+   839→          'CRITICIDADE': d.criticidade, 'EM ESTOQUE': d.emEstoque,
+   840→          'Data de troca': formatDateBR(d.dataTroca),
+   841→          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+   842→          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+   843→          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+   844→          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+   845→          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+   846→          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
+   847→          ...(d.extraFields || {}),
+   848→        }));
+   849→      } else {
+   850→        exportData = sheetData.map(d => ({
+   851→          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+   852→          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+   853→          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+   854→          'Quantidade Inspeção': d.qty, 'Quantidade pedida': d.quantidadePedida,
+   855→          'CRITICIDADE': d.criticidade, 'Betim': d.betim, 'LIC': d.lic,
+   856→          'EM ESTOQUE': d.emEstoque, 'Importação': d.importacao,
+   857→          'Data de troca': formatDateBR(d.dataTroca),
+   858→          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+   859→          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+   860→          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+   861→          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+   862→          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+   863→          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
+   864→          'Data Follow Up': formatDateBR(d.dataFollowUp),
+   865→          'VÍNCULO PAS SVS': d.vinculoPasSvs, 'Número do pedido': d.numeroPedido,
+   866→          'Data de recebimento do pedido': formatDateBR(d.dataRecebimentoPedido),
+   867→          'Tipo do pedido': d.tipoPedido,
+   868→          'Data de entrega solicitada': formatDateBR(d.dataEntregaSolicitada),
+   869→          'Part number': d.partNumber, 'Replace': d.replace, 'Descrição.1': d.descricao1,
+   870→          'Disponibilidade': d.disponibilidade, 'Quantidade faturada': d.quantidadeFaturada,
+   871→          'Número do CIGAM': d.numeroCigam,
+   872→          'Número do processo importação': d.numeroProcessoImportacao,
+   873→          'Número da NF': d.numeroNF, 'Data de emissão da NF': formatDateBR(d.dataEmissaoNF),
+   874→          'Observação': d.observacao,
+   875→          ...(d.extraFields || {}),
+   876→        }));
+   877→      }
+   878→      const ws = XLSX.utils.json_to_sheet(exportData);
+   879→      const exportSheetName = tipo === 'servicos' ? (SHEET_DISPLAY_NAMES[sheetName] || sheetName) : sheetName;
+   880→      XLSX.utils.book_append_sheet(wb, ws, exportSheetName);
+   881→    });
+   882→    const suffix = tipo === 'servicos' ? '_servicos' : '_completo';
+   883→    XLSX.writeFile(wb, `oportunidades_export${suffix}_${new Date().toISOString().split('T')[0]}.xlsx`);
+   884→  };
+   885→
+   886→  const exportToJSON = () => {
+   887→    if (data.length === 0) { alert('Nenhum dado para exportar!'); return; }
+   888→    const exportData = {
+   889→      exportDate: new Date().toISOString(),
+   890→      totalRecords: data.length,
+   891→      data: data.map(d => ({
+   892→        ...d,
+   893→        dataAbertura: d.dataAbertura?.toISOString() || null,
+   894→        dataTroca: d.dataTroca?.toISOString() || null,
+   895→        dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
+   896→        previsaoChegada: d.previsaoChegada?.toISOString() || null,
+   897→        dataVenda: d.dataVenda?.toISOString() || null,
+   898→        dataFollowUp: d.dataFollowUp?.toISOString() || null,
+   899→        dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
+   900→        dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
+   901→        dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
+   902→      })),
+   903→      excelHeadersByOrigin,
+   904→    };
+   905→    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+   906→    const url = URL.createObjectURL(blob);
+   907→    const a = document.createElement('a');
+   908→    a.href = url;
+   909→    a.download = `dashboard_oportunidades_${new Date().toISOString().split('T')[0]}.json`;
+   910→    document.body.appendChild(a);
+   911→    a.click();
+   912→    document.body.removeChild(a);
+   913→    URL.revokeObjectURL(url);
+   914→  };
+   915→
+   916→  const handleJsonFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+   917→    const file = event.target.files?.[0];
+   918→    if (!file) return;
+   919→    setPendingJsonFile(file);
+   920→    setShowJsonImportModal(true);
+   921→    if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
+   922→  };
+   923→
+   924→  const handleJsonImportConfirmed = async () => {
+   925→    if (!pendingJsonFile) return;
+   926→    setIsLoading(true);
+   927→    try {
+   928→      const text = await pendingJsonFile.text();
+   929→      const jsonData = JSON.parse(text);
+   930→      if (!jsonData.data || !Array.isArray(jsonData.data)) throw new Error('Formato inválido');
+   931→      const parsedData: OpportunityRecord[] = jsonData.data.map((d: Record<string, unknown>, index: number) => ({
+   932→        id: index + 1,
+   933→        origemAba: String(d.origemAba || ''), empresa: String(d.empresa || ''),
+   934→        cliente: String(d.cliente || ''), descricao: String(d.descricao || ''),
+   935→        equipamento: String(d.equipamento || ''),
+   936→        dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
+   937→        mes: String(d.mes || ''), pn: String(d.pn || ''),
+   938→        partname: String(d.partname || ''), qty: Number(d.qty) || 0,
+   939→        criticidade: String(d.criticidade || 'Baixa'),
+   940→        betim: Number(d.betim) || 0, lic: Number(d.lic) || 0,
+   941→        emEstoque: String(d.emEstoque || ''), importacao: Number(d.importacao) || 0,
+   942→        dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
+   943→        dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
+   944→        ordemManutencao: String(d.ordemManutencao || ''),
+   945→        pedidoCompra: String(d.pedidoCompra || ''),
+   946→        requisicaoCompra: String(d.requisicaoCompra || ''),
+   947→        previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
+   948→        notaFiscal: String(d.notaFiscal || ''),
+   949→        dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
+   950→        followUpComercial: String(d.followUpComercial || ''),
+   951→        followUpLocal: String(d.followUpLocal || ''),
+   952→        dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
+   953→        vinculoPasSvs: String(d.vinculoPasSvs || ''),
+   954→        numeroPedido: String(d.numeroPedido || ''),
+   955→        dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
+   956→        tipoPedido: String(d.tipoPedido || ''),
+   957→        dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
+   958→        partNumber: String(d.partNumber || ''), replace: String(d.replace || ''),
+   959→        descricao1: String(d.descricao1 || ''),
+   960→        quantidadePedida: Number(d.quantidadePedida) || 0,
+   961→        disponibilidade: String(d.disponibilidade || ''),
+   962→        quantidadeFaturada: Number(d.quantidadeFaturada) || 0,
+   963→        numeroCigam: String(d.numeroCigam || ''),
+   964→        numeroProcessoImportacao: String(d.numeroProcessoImportacao || ''),
+   965→        numeroNF: String(d.numeroNF || ''),
+   966→        dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
+   967→        observacao: String(d.observacao || ''),
+   968→        cliente1: String(d.cliente1 || ''),
+   969→        quantidadeEmEstoque: Number(d.quantidadeEmEstoque) || 0,
+   970→        dataDisponibilidade: d.dataDisponibilidade ? new Date(d.dataDisponibilidade as string) : null,
+   971→        quantidadeAFaturar: Number(d.quantidadeAFaturar) || 0,
+   972→        status: (d.status as OpportunityRecord['status']) || 'sem_om',
+   973→        diasEmAberto: Number(d.diasEmAberto) || 0,
+   974→        diasParaEntrega: d.diasParaEntrega ? Number(d.diasParaEntrega) : null,
+   975→        estoqueDisponivel: Number(d.estoqueDisponivel) || 0,
+   976→        extraFields: d.extraFields ? (() => {
+   977→          const ef: Record<string, string | number | Date | null> = {};
+   978→          for (const [k, v] of Object.entries(d.extraFields as Record<string, unknown>)) {
+   979→            if (v instanceof Date || (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}T/))) {
+   980→              ef[k] = new Date(v as string);
+   981→            } else if (typeof v === 'number') {
+   982→              ef[k] = v;
+   983→            } else {
+   984→              ef[k] = v != null ? String(v) : null;
+   985→            }
+   986→          }
+   987→          return ef;
+   988→        })() : undefined,
+   989→      }));
+   990→      setData(parsedData);
+   991→      if (jsonData.excelHeadersByOrigin) {
+   992→        setExcelHeadersByOrigin(jsonData.excelHeadersByOrigin);
+   993→      }
+   994→      setShowJsonImportModal(false);
+   995→      setPendingJsonFile(null);
+   996→      alert(`Importação JSON concluída! ${parsedData.length} registros carregados.`);
+   997→    } catch (error) {
+   998→      console.error('Erro ao importar JSON:', error);
+   999→      alert('Erro ao importar arquivo JSON! Verifique o formato.');
+  1000→    } finally { setIsLoading(false); }
+  1001→  };
+  1002→
+  1003→  const clearFilters = () => {
+  1004→    setEmpresaFilter([]); setClienteFilter([]); setEquipamentoFilter([]);
+  1005→    setCriticidadeFilter([]); setStatusFilter([]); setPeriodFilter([]);
+  1006→    setSearchTerm(''); setEstoqueFilter([]);
+  1007→  };
+  1008→  const clearOppFilters = () => {
+  1009→    setOppMonthFilter([]); setOppYearFilter([]); setOppClienteFilter([]);
+  1010→    setOppStatusFilter([]); setOppCriticidadeFilter([]); setOppDiasFilter([]);
+  1011→    setOppAnaliseFilter([]); setOppPrazoFilter([]); setOppSearchTerm('');
+  1012→  };
+  1013→  const openFollowUpModal = (record: OpportunityRecord) => {
+  1014→    setFollowUpRecord(record);
+  1015→    setFollowUpText(record.followUpLocal || record.followUpComercial || '');
+  1016→    setApplyToAllPedido(false);
+  1017→    setApplyToAllOM(false);
+  1018→    setDeleteMode(false);
+  1019→    setShowFollowUpModal(true);
+  1020→  };
+  1021→  const saveFollowUp = () => {
+  1022→    if (!followUpRecord) return;
+  1023→
+  1024→    const now = new Date();
+  1025→
+  1026→    // Modo de exclusão
+  1027→    if (deleteMode) {
+  1028→      setData(prevData => {
+  1029→        const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
+  1030→        const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
+  1031→
+  1032→        return prevData.map(d => {
+  1033→          // Aplicar a todos do pedido, OM ou apenas este item
+  1034→          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
+  1035→              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
+  1036→              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
+  1037→            return { ...d, followUpLocal: '', dataFollowUp: null };
+  1038→          }
+  1039→          return d;
+  1040→        });
+  1041→      });
+  1042→    }
+  1043→    // Modo de salvamento
+  1044→    else if (followUpText.trim()) {
+  1045→      const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
+  1046→      const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
+  1047→
+  1048→      setData(prevData => {
+  1049→        return prevData.map(d => {
+  1050→          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
+  1051→              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
+  1052→              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
+  1053→            return { ...d, followUpLocal: followUpText, dataFollowUp: now };
+  1054→          }
+  1055→          return d;
+  1056→        });
+  1057→      });
+  1058→    }
+  1059→
+  1060→    setShowFollowUpModal(false);
+  1061→    setFollowUpRecord(null);
+  1062→    setFollowUpText('');
+  1063→    setApplyToAllPedido(false);
+  1064→    setApplyToAllOM(false);
+  1065→    setDeleteMode(false);
+  1066→  };
+  1067→
+  1068→  const startDeleteMode = () => {
+  1069→    setDeleteMode(true);
+  1070→  };
+  1071→
+  1072→  // Column configuration handlers
+  1073→  const handleSaveColumnConfig = () => {
+  1074→    // Only keep columns that belong to current origin
+  1075→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+  1076→    const originKeys = allAvailableColumns.map(c => c.key);
+  1077→    const filtered = tempVisibleColumns.filter(c => originKeys.includes(c));
+  1078→    setVisibleColumns(filtered);
+  1079→    localStorage.setItem('dashboard_oportunidades_columns', JSON.stringify({ origin, columns: filtered }));
+  1080→    setShowColumnConfigModal(false);
+  1081→  };
+  1082→
+  1083→  useEffect(() => {
+  1084→    if (showColumnConfigModal) {
+  1085→      // Only include columns that belong to current origin
+  1086→      const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+  1087→      const originKeys = allAvailableColumns.map(c => c.key);
+  1088→      setTempVisibleColumns(visibleColumns.filter(c => originKeys.includes(c)));
+  1089→    }
+  1090→  }, [showColumnConfigModal, visibleColumns, oppOrigemFilter, allAvailableColumns]);
+  1091→
+  1092→  const handleDragEnd = (event: DragEndEvent) => {
+  1093→    const { active, over } = event;
+  1094→    if (over && active.id !== over.id) {
+  1095→      setTempVisibleColumns((items) => {
+  1096→        const oldIndex = items.indexOf(active.id as string);
+  1097→        const newIndex = items.indexOf(over.id as string);
+  1098→        return arrayMove(items, oldIndex, newIndex);
+  1099→      });
+  1100→    }
+  1101→  };
+  1102→
+  1103→  const handleAddColumn = (key: string) => setTempVisibleColumns([...tempVisibleColumns, key]);
+  1104→  const handleRemoveColumn = (key: string) => setTempVisibleColumns(tempVisibleColumns.filter(c => c !== key));
+  1105→  const handleSelectAll = () => setTempVisibleColumns(allAvailableColumns.map(c => c.key));
+  1106→  const handleClearAll = () => setTempVisibleColumns([]);
+  1107→
+  1108→  // Helper to render table cells
+  1109→  const renderTableCell = (record: OpportunityRecord, columnKey: string) => {
+  1110→    switch (columnKey) {
+  1111→      case 'id':
+  1112→        return <TableCell className="text-xs text-slate-600">{record.id}</TableCell>;
+  1113→      case 'origemAba':
+  1114→        return <TableCell className="text-xs text-slate-600">{SHEET_DISPLAY_NAMES[record.origemAba] || record.origemAba}</TableCell>;
+  1115→      case 'criticidade':
+  1116→        return (
+  1117→          <TableCell className="text-xs">
+  1118→            <Badge style={{ backgroundColor: CRITICITY_COLORS[record.criticidade] || '#6c757d', color: 'white' }}>
+  1119→              {record.criticidade}
+  1120→            </Badge>
+  1121→          </TableCell>
+  1122→        );
+  1123→      case 'estoque':
+  1124→        return <TableCell className="text-xs"><AnaliseEstoqueBadge record={record} /></TableCell>;
+  1125→      case 'status':
+  1126→        return (
+  1127→          <TableCell className="text-xs">
+  1128→            <Badge style={{ backgroundColor: STATUS_CONFIG[record.status]?.color || '#6c757d', color: 'white' }}>
+  1129→              {STATUS_CONFIG[record.status]?.label || record.status}
+  1130→            </Badge>
+  1131→          </TableCell>
+  1132→        );
+  1133→      case 'followUp':
+  1134→        return (
+  1135→          <TableCell className="text-xs">
+  1136→            <Button
+  1137→              variant="ghost"
+  1138→              size="sm"
+  1139→              className="h-7 w-7 p-0"
+  1140→              onClick={() => openFollowUpModal(record)}
+  1141→              title={record.followUpLocal || record.followUpComercial || 'Adicionar Follow Up'}
+  1142→            >
+  1143→              <MessageCircle className="h-3.5 w-3.5" style={{ color: (record.followUpLocal || record.followUpComercial) ? '#FF6600' : '#94a3b8' }} />
+  1144→            </Button>
+  1145→          </TableCell>
+  1146→        );
+  1147→      case 'dataAbertura':
+  1148→      case 'dataTroca':
+  1149→      case 'dataAberturaOM':
+  1150→      case 'dataVenda':
+  1151→      case 'dataEmissaoNF':
+  1152→      case 'dataEntregaSolicitada':
+  1153→      case 'dataDisponibilidade':
+  1154→      case 'dataFollowUp':
+  1155→      case 'dataRecebimentoPedido':
+  1156→        return <TableCell className="text-xs text-slate-600">{formatDateBR(record[columnKey as keyof OpportunityRecord] as Date | null)}</TableCell>;
+  1157→      case 'previsaoChegada':
+  1158→        if (record.status === 'vendido') {
+  1159→          return <TableCell className="text-xs text-slate-400">-</TableCell>;
+  1160→        }
+  1161→        return <TableCell className="text-xs text-slate-600">{formatDateBR(record.previsaoChegada)}</TableCell>;
+  1162→      default:
+  1163→        let value = record[columnKey as keyof OpportunityRecord];
+  1164→        if (value === undefined || value === null || value === '') {
+  1165→          // Check extra fields for dynamic columns
+  1166→          if (record.extraFields && columnKey in record.extraFields) {
+  1167→            const efVal = record.extraFields[columnKey];
+  1168→            if (efVal instanceof Date) {
+  1169→              return <TableCell className="text-xs text-slate-600">{formatDateBR(efVal)}</TableCell>;
+  1170→            }
+  1171→            return <TableCell className="text-xs text-slate-600">{String(efVal ?? '-')}</TableCell>;
+  1172→          }
+  1173→        }
+  1174→        return <TableCell className="text-xs text-slate-600">{String(value || '-')}</TableCell>;
+  1175→    }
+  1176→  };
+  1177→
+  1178→  return (
+  1179→    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+  1180→      {/* Header */}
+  1181→      <header className="bg-white border-b-4 border-slate-400 shadow-sm sticky top-0 z-50">
+  1182→        <div className="w-full px-6 py-3 flex items-center justify-between flex-wrap gap-3">
+  1183→          <div className="flex items-center gap-4">
+  1184→            <div className="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center shrink-0">
+  1185→              <Target className="h-6 w-6 text-slate-600" />
+  1186→            </div>
+  1187→            <div>
+  1188→              <h1 className="text-xl font-bold text-slate-700">Dashboard de Oportunidades</h1>
+  1189→              <div className="flex items-center gap-2 text-xs text-slate-400">
+  1190→                {isSyncing && (
+  1191→                  <><div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div><span>Sincronizando...</span></>
+  1192→                )}
+  1193→                {!isSyncing && lastSync && (
+  1194→                  <>Última sinc: <span className="text-slate-600">{lastSync}</span></>
+  1195→                )}
+  1196→                {!isSyncing && !lastSync && (
+  1197→                  <span>Aguardando dados...</span>
+  1198→                )}
+  1199→              </div>
+  1200→            </div>
+  1201→          </div>
+  1202→
+  1203→          <div className="flex items-center gap-2 flex-wrap">
+  1204→            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { jsonFileInputRef.current?.click(); }} disabled={isLoading}>
+  1205→              <FileJson className="h-4 w-4" />
+  1206→              Importar JSON
+  1207→            </Button>
+  1208→            <input
+  1209→              ref={jsonFileInputRef}
+  1210→              type="file"
+  1211→              accept=".json"
+  1212→              className="hidden"
+  1213→              onChange={handleJsonFileSelect}
+  1214→            />
+  1215→            <DropdownMenu>
+  1216→              <DropdownMenuTrigger asChild>
+  1217→                <Button size="sm" className="gap-1.5" style={{ backgroundColor: '#FF6600', color: 'white' }}>
+  1218→                  <Upload className="h-4 w-4" />
+  1219→                  Importar Excel
+  1220→                </Button>
+  1221→              </DropdownMenuTrigger>
+  1222→              <DropdownMenuContent align="end">
+  1223→                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+  1224→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Nova Importação
+  1225→                </DropdownMenuItem>
+  1226→                <DropdownMenuItem onClick={loadData}>
+  1227→                  <RefreshCw className="h-4 w-4 mr-2" /> Recarregar do Servidor
+  1228→                </DropdownMenuItem>
+  1229→              </DropdownMenuContent>
+  1230→            </DropdownMenu>
+  1231→            <input
+  1232→              ref={fileInputRef}
+  1233→              type="file"
+  1234→              accept=".xlsx,.xls,.csv"
+  1235→              className="hidden"
+  1236→              onChange={handleFileSelect}
+  1237→            />
+  1238→            <DropdownMenu>
+  1239→              <DropdownMenuTrigger asChild>
+  1240→                <Button size="sm" variant="outline" className="gap-1.5">
+  1241→                  <Download className="h-4 w-4" />
+  1242→                  Exportar
+  1243→                </Button>
+  1244→              </DropdownMenuTrigger>
+  1245→              <DropdownMenuContent align="end">
+  1246→                <DropdownMenuItem onClick={() => exportToExcel('completo')}>
+  1247→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Exportar Completo
+  1248→                </DropdownMenuItem>
+  1249→                <DropdownMenuItem onClick={() => exportToExcel('servicos')}>
+  1250→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Exportar Serviços
+  1251→                </DropdownMenuItem>
+  1252→                <DropdownMenuItem onClick={exportToJSON}>
+  1253→                  <FileJson className="h-4 w-4 mr-2" /> Exportar JSON
+  1254→                </DropdownMenuItem>
+  1255→              </DropdownMenuContent>
+  1256→            </DropdownMenu>
+  1257→          </div>
+  1258→        </div>
+  1259→      </header>
+  1260→
+  1261→      {/* Main Content */}
+  1262→      <main className="flex-1 w-full px-4 py-6 overflow-x-hidden">
+  1263→        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+  1264→          <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+  1265→            <TabsList className="bg-white/80 backdrop-blur-sm border border-slate-200">
+  1266→              <TabsTrigger value="overview" className="gap-2">
+  1267→                <BarChart3 className="h-4 w-4" />
+  1268→                Visão Geral
+  1269→              </TabsTrigger>
+  1270→              <TabsTrigger value="opportunities" className="gap-2">
+  1271→                <ShoppingCart className="h-4 w-4" />
+  1272→                Oportunidades
+  1273→              </TabsTrigger>
+  1274→              <TabsTrigger value="ranking" className="gap-2">
+  1275→                <TrendingUp className="h-4 w-4" />
+  1276→                Ranking
+  1277→              </TabsTrigger>
+  1278→            </TabsList>
+  1279→          </div>
+  1280→
+  1281→          {/* Overview Tab */}
+  1282→          <TabsContent value="overview" className="space-y-6">
+  1283→            {/* KPI Cards */}
+  1284→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  1285→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.primary }}>
+  1286→                <CardHeader className="pb-2">
+  1287→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1288→                    <Package className="h-4 w-4" />
+  1289→                    Total de Linhas
+  1290→                  </CardTitle>
+  1291→                </CardHeader>
+  1292→                <CardContent>
+  1293→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalLinhas}</div>
+  1294→                  <p className="text-xs text-slate-400 mt-1">Registros de inspeção</p>
+  1295→                </CardContent>
+  1296→              </Card>
+  1297→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.success }}>
+  1298→                <CardHeader className="pb-2">
+  1299→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1300→                    <ShoppingCart className="h-4 w-4" />
+  1301→                    Quantidade Total
+  1302→                  </CardTitle>
+  1303→                </CardHeader>
+  1304→                <CardContent>
+  1305→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalQty}</div>
+  1306→                  <p className="text-xs text-slate-400 mt-1">Peças inspecionadas</p>
+  1307→                </CardContent>
+  1308→              </Card>
+  1309→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.warning }}>
+  1310→                <CardHeader className="pb-2">
+  1311→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1312→                    <FileSpreadsheet className="h-4 w-4" />
+  1313→                    Pedidos de Compra
+  1314→                  </CardTitle>
+  1315→                </CardHeader>
+  1316→                <CardContent>
+  1317→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalPedidos}</div>
+  1318→                  <p className="text-xs text-slate-400 mt-1">Pedidos únicos</p>
+  1319→                </CardContent>
+  1320→              </Card>
+  1321→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.info }}>
+  1322→                <CardHeader className="pb-2">
+  1323→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1324→                    <Wrench className="h-4 w-4" />
+  1325→                    Ordens de Manutenção
+  1326→                  </CardTitle>
+  1327→                </CardHeader>
+  1328→                <CardContent>
+  1329→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalOMs}</div>
+  1330→                  <p className="text-xs text-slate-400 mt-1">OMs únicas</p>
+  1331→                </CardContent>
+  1332→              </Card>
+  1333→            </div>
+  1334→
+  1335→            {/* Filters & Charts Grid */}
+  1336→            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  1337→              {/* Filters Panel */}
+  1338→              <Card className="bg-white/90 backdrop-blur-sm lg:col-span-1">
+  1339→                <CardHeader>
+  1340→                  <div className="flex items-center justify-between">
+  1341→                    <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1342→                      <Filter className="h-5 w-5" />
+  1343→                      Filtros
+  1344→                    </CardTitle>
+  1345→                    <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-slate-500">
+  1346→                      Limpar tudo
+  1347→                    </Button>
+  1348→                  </div>
+  1349→                </CardHeader>
+  1350→                <CardContent className="space-y-4">
+  1351→                  <div className="space-y-2">
+  1352→                    <label className="text-xs font-medium text-slate-600">Busca</label>
+  1353→                    <Input
+  1354→                      placeholder="PN, Descrição, Cliente..."
+  1355→                      value={searchTerm}
+  1356→                      onChange={(e) => setSearchTerm(e.target.value)}
+  1357→                      className="h-9 text-sm"
+  1358→                    />
+  1359→                  </div>
+  1360→
+  1361→                  <div className="space-y-2">
+  1362→                    <label className="text-xs font-medium text-slate-600">Empresa</label>
+  1363→                    <FilterDropdown
+  1364→                      label="Todas"
+  1365→                      options={empresaOptions}
+  1366→                      selected={empresaFilter}
+  1367→                      onChange={setEmpresaFilter}
+  1368→                    />
+  1369→                  </div>
+  1370→
+  1371→                  <div className="space-y-2">
+  1372→                    <label className="text-xs font-medium text-slate-600">Cliente</label>
+  1373→                    <FilterDropdown
+  1374→                      label="Todos"
+  1375→                      options={clienteOptions}
+  1376→                      selected={clienteFilter}
+  1377→                      onChange={setClienteFilter}
+  1378→                    />
+  1379→                  </div>
+  1380→
+  1381→                  <div className="space-y-2">
+  1382→                    <label className="text-xs font-medium text-slate-600">Equipamento</label>
+  1383→                    <FilterDropdown
+  1384→                      label="Todos"
+  1385→                      options={equipamentoOptions}
+  1386→                      selected={equipamentoFilter}
+  1387→                      onChange={setEquipamentoFilter}
+  1388→                    />
+  1389→                  </div>
+  1390→
+  1391→                  <div className="space-y-2">
+  1392→                    <label className="text-xs font-medium text-slate-600">Criticidade</label>
+  1393→                    <FilterDropdown
+  1394→                      label="Todas"
+  1395→                      options={criticidadeOptions}
+  1396→                      selected={criticidadeFilter}
+  1397→                      onChange={setCriticidadeFilter}
+  1398→                    />
+  1399→                  </div>
+  1400→
+  1401→                  <div className="space-y-2">
+  1402→                    <label className="text-xs font-medium text-slate-600">Status</label>
+  1403→                    <FilterDropdown
+  1404→                      label="Todos"
+  1405→                      options={statusOptions}
+  1406→                      selected={statusFilter}
+  1407→                      onChange={setStatusFilter}
+  1408→                    />
+  1409→                  </div>
+  1410→
+  1411→                  <div className="space-y-2">
+  1412→                    <label className="text-xs font-medium text-slate-600">Período</label>
+  1413→                    <FilterDropdown
+  1414→                      label="Todos"
+  1415→                      options={periodoOptions}
+  1416→                      selected={periodFilter}
+  1417→                      onChange={setPeriodFilter}
+  1418→                    />
+  1419→                  </div>
+  1420→
+  1421→                  <div className="space-y-2">
+  1422→                    <label className="text-xs font-medium text-slate-600">Estoque</label>
+  1423→                    <FilterDropdown
+  1424→                      label="Todos"
+  1425→                      options={estoqueOptions}
+  1426→                      selected={estoqueFilter}
+  1427→                      onChange={setEstoqueFilter}
+  1428→                    />
+  1429→                  </div>
+  1430→                </CardContent>
+  1431→              </Card>
+  1432→
+  1433→              {/* Charts */}
+  1434→              <div className="lg:col-span-2 space-y-6">
+  1435→                {/* Monthly Chart with Year Filter */}
+  1436→                <Card className="bg-white/90 backdrop-blur-sm">
+  1437→                  <CardHeader>
+  1438→                    <div className="flex items-center justify-between">
+  1439→                      <CardTitle className="text-lg font-semibold text-slate-700">
+  1440→                        Evolução por Mês
+  1441→                      </CardTitle>
+  1442→                      <Select value={chartYearFilter} onValueChange={setChartYearFilter}>
+  1443→                        <SelectTrigger className="w-32 h-8 text-sm">
+  1444→                          <SelectValue placeholder="Ano" />
+  1445→                        </SelectTrigger>
+  1446→                        <SelectContent>
+  1447→                          {availableYears.map(year => (
+  1448→                            <SelectItem key={year} value={year}>{year}</SelectItem>
+  1449→                          ))}
+  1450→                        </SelectContent>
+  1451→                      </Select>
+  1452→                    </div>
+  1453→                  </CardHeader>
+  1454→                  <CardContent>
+  1455→                    <ResponsiveContainer width="100%" height={250}>
+  1456→                      <BarChart data={monthlyChartData}>
+  1457→                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1458→                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} />
+  1459→                        <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
+  1460→                        <Tooltip
+  1461→                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1462→                          itemStyle={{ color: '#fff' }}
+  1463→                        />
+  1464→                        <Bar dataKey="value" name="Quantidade" fill="#64748b" radius={[4, 4, 0, 0]} />
+  1465→                      </BarChart>
+  1466→                    </ResponsiveContainer>
+  1467→                  </CardContent>
+  1468→                </Card>
+  1469→
+  1470→                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  1471→                  {/* Client Chart */}
+  1472→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1473→                    <CardHeader>
+  1474→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1475→                        Top 10 Clientes
+  1476→                      </CardTitle>
+  1477→                    </CardHeader>
+  1478→                    <CardContent>
+  1479→                      <ResponsiveContainer width="100%" height={200}>
+  1480→                        <BarChart data={clientChartData} layout="vertical">
+  1481→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1482→                          <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} />
+  1483→                          <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 11 }} width={80} />
+  1484→                          <Tooltip
+  1485→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1486→                            itemStyle={{ color: '#fff' }}
+  1487→                          />
+  1488→                          <Bar dataKey="Quantidade" fill="#64748b" radius={[0, 4, 4, 0]} />
+  1489→                          <Bar dataKey="Vendido" fill="#22c55e" radius={[0, 4, 4, 0]} />
+  1490→                          <Legend />
+  1491→                        </BarChart>
+  1492→                      </ResponsiveContainer>
+  1493→                    </CardContent>
+  1494→                  </Card>
+  1495→
+  1496→                  {/* Equipment Chart */}
+  1497→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1498→                    <CardHeader>
+  1499→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1500→                        Top 10 Equipamentos
+  1501→                      </CardTitle>
+  1502→                    </CardHeader>
+  1503→                    <CardContent>
+  1504→                      <ResponsiveContainer width="100%" height={200}>
+  1505→                        <BarChart data={equipmentChartData} layout="vertical">
+  1506→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1507→                          <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} />
+  1508→                          <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 11 }} width={80} />
+  1509→                          <Tooltip
+  1510→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1511→                            itemStyle={{ color: '#fff' }}
+  1512→                          />
+  1513→                          <Bar dataKey="value" fill="#64748b" radius={[0, 4, 4, 0]} />
+  1514→                        </BarChart>
+  1515→                      </ResponsiveContainer>
+  1516→                    </CardContent>
+  1517→                  </Card>
+  1518→                </div>
+  1519→
+  1520→                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  1521→                  {/* Criticity Chart */}
+  1522→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1523→                    <CardHeader>
+  1524→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1525→                        Distribuição por Criticidade
+  1526→                      </CardTitle>
+  1527→                    </CardHeader>
+  1528→                    <CardContent>
+  1529→                      <ResponsiveContainer width="100%" height={200}>
+  1530→                        <PieChart>
+  1531→                          <Pie
+  1532→                            data={criticityChartData}
+  1533→                            cx="50%"
+  1534→                            cy="50%"
+  1535→                            labelLine={false}
+  1536→                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1537→                            outerRadius={70}
+  1538→                            dataKey="value"
+  1539→                          >
+  1540→                            {criticityChartData.map((entry, index) => (
+  1541→                              <Cell key={`cell-${index}`} fill={entry.color} />
+  1542→                            ))}
+  1543→                          </Pie>
+  1544→                          <Tooltip
+  1545→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1546→                            itemStyle={{ color: '#fff' }}
+  1547→                          />
+  1548→                        </PieChart>
+  1549→                      </ResponsiveContainer>
+  1550→                    </CardContent>
+  1551→                  </Card>
+  1552→
+  1553→                  {/* Status Chart */}
+  1554→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1555→                    <CardHeader>
+  1556→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1557→                        Distribuição por Status
+  1558→                      </CardTitle>
+  1559→                    </CardHeader>
+  1560→                    <CardContent>
+  1561→                      <ResponsiveContainer width="100%" height={200}>
+  1562→                        <PieChart>
+  1563→                          <Pie
+  1564→                            data={statusChartData}
+  1565→                            cx="50%"
+  1566→                            cy="50%"
+  1567→                            labelLine={false}
+  1568→                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1569→                            outerRadius={70}
+  1570→                            dataKey="value"
+  1571→                          >
+  1572→                            {statusChartData.map((entry, index) => (
+  1573→                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+  1574→                            ))}
+  1575→                          </Pie>
+  1576→                          <Tooltip
+  1577→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1578→                            itemStyle={{ color: '#fff' }}
+  1579→                          />
+  1580→                        </PieChart>
+  1581→                      </ResponsiveContainer>
+  1582→                    </CardContent>
+  1583→                  </Card>
+  1584→                </div>
+  1585→
+  1586→                {/* Origem Chart */}
+  1587→                <Card className="bg-white/90 backdrop-blur-sm">
+  1588→                  <CardHeader>
+  1589→                    <CardTitle className="text-base font-semibold text-slate-700">
+  1590→                      Distribuição por Origem
+  1591→                    </CardTitle>
+  1592→                  </CardHeader>
+  1593→                  <CardContent>
+  1594→                    <ResponsiveContainer width="100%" height={200}>
+  1595→                      <PieChart>
+  1596→                        <Pie
+  1597→                          data={origemChartData}
+  1598→                          cx="50%"
+  1599→                          cy="50%"
+  1600→                          labelLine={false}
+  1601→                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1602→                          outerRadius={70}
+  1603→                          dataKey="value"
+  1604→                        >
+  1605→                          {origemChartData.map((entry, index) => (
+  1606→                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+  1607→                          ))}
+  1608→                        </Pie>
+  1609→                        <Tooltip
+  1610→                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1611→                          itemStyle={{ color: '#fff' }}
+  1612→                        />
+  1613→                      </PieChart>
+  1614→                    </ResponsiveContainer>
+  1615→                  </CardContent>
+  1616→                </Card>
+  1617→              </div>
+  1618→            </div>
+  1619→          </TabsContent>
+  1620→
+  1621→          {/* Opportunities Tab */}
+  1622→          <TabsContent value="opportunities" className="space-y-6">
+  1623→            {/* KPIs */}
+  1624→            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+  1625→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.primary }}>
+  1626→                <CardHeader className="pb-2">
+  1627→                  <CardTitle className="text-xs font-medium text-slate-500">Linhas</CardTitle>
+  1628→                </CardHeader>
+  1629→                <CardContent>
+  1630→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalLinhas}</div>
+  1631→                  <p className="text-xs text-slate-400">Total</p>
+  1632→                </CardContent>
+  1633→              </Card>
+  1634→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.success }}>
+  1635→                <CardHeader className="pb-2">
+  1636→                  <CardTitle className="text-xs font-medium text-slate-500">Em Aberto</CardTitle>
+  1637→                </CardHeader>
+  1638→                <CardContent>
+  1639→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalEmAberto}</div>
+  1640→                  <p className="text-xs text-slate-400">Não vendidos</p>
+  1641→                </CardContent>
+  1642→              </Card>
+  1643→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.warning }}>
+  1644→                <CardHeader className="pb-2">
+  1645→                  <CardTitle className="text-xs font-medium text-slate-500">QTY</CardTitle>
+  1646→                </CardHeader>
+  1647→                <CardContent>
+  1648→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalQty}</div>
+  1649→                  <p className="text-xs text-slate-400">Total inspeção</p>
+  1650→                </CardContent>
+  1651→              </Card>
+  1652→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.info }}>
+  1653→                <CardHeader className="pb-2">
+  1654→                  <CardTitle className="text-xs font-medium text-slate-500">Vendido</CardTitle>
+  1655→                </CardHeader>
+  1656→                <CardContent>
+  1657→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalVendido}</div>
+  1658→                  <p className="text-xs text-slate-400">Quantidade</p>
+  1659→                </CardContent>
+  1660→              </Card>
+  1661→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.danger }}>
+  1662→                <CardHeader className="pb-2">
+  1663→                  <CardTitle className="text-xs font-medium text-slate-500">NFs</CardTitle>
+  1664→                </CardHeader>
+  1665→                <CardContent>
+  1666→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalNF}</div>
+  1667→                  <p className="text-xs text-slate-400">Notas fiscais</p>
+  1668→                </CardContent>
+  1669→              </Card>
+  1670→            </div>
+  1671→
+  1672→            {/* Filters */}
+  1673→            <Card className="bg-white/90 backdrop-blur-sm">
+  1674→              <CardHeader>
+  1675→                <div className="flex items-center justify-between">
+  1676→                  <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1677→                    <Filter className="h-5 w-5" />
+  1678→                    Filtros Avançados
+  1679→                  </CardTitle>
+  1680→                  <Button variant="ghost" size="sm" onClick={clearOppFilters} className="text-xs text-slate-500">
+  1681→                    Limpar tudo
+  1682→                  </Button>
+  1683→                </div>
+  1684→              </CardHeader>
+  1685→              <CardContent>
+  1686→                <div className="flex flex-wrap gap-3">
+  1687→                  <div className="flex-1 min-w-[200px] space-y-2">
+  1688→                    <label className="text-xs font-medium text-slate-600">Busca</label>
+  1689→                    <Input
+  1690→                      placeholder="PN, Descrição, Cliente..."
+  1691→                      value={oppSearchTerm}
+  1692→                      onChange={(e) => setOppSearchTerm(e.target.value)}
+  1693→                      className="h-9 text-sm"
+  1694→                    />
+  1695→                  </div>
+  1696→
+  1697→                  <div className="min-w-[150px] space-y-2">
+  1698→                    <label className="text-xs font-medium text-slate-600">Origem</label>
+  1699→                    <FilterDropdown
+  1700→                      label="Selecione"
+  1701→                      options={origemOptions}
+  1702→                      selected={oppOrigemFilter}
+  1703→                      onChange={(val) => {
+  1704→                        setOppOrigemFilter(val);
+  1705→                      }}
+  1706→                    />
+  1707→                  </div>
+  1708→
+  1709→                  <div className="min-w-[150px] space-y-2">
+  1710→                    <label className="text-xs font-medium text-slate-600">Mês</label>
+  1711→                    <FilterDropdown
+  1712→                      label="Todos"
+  1713→                      options={monthOptions}
+  1714→                      selected={oppMonthFilter}
+  1715→                      onChange={setOppMonthFilter}
+  1716→                    />
+  1717→                  </div>
+  1718→
+  1719→                  <div className="min-w-[150px] space-y-2">
+  1720→                    <label className="text-xs font-medium text-slate-600">Ano</label>
+  1721→                    <FilterDropdown
+  1722→                      label="Todos"
+  1723→                      options={yearOptions}
+  1724→                      selected={oppYearFilter}
+  1725→                      onChange={setOppYearFilter}
+  1726→                    />
+  1727→                  </div>
+  1728→
+  1729→                  <div className="min-w-[180px] space-y-2">
+  1730→                    <label className="text-xs font-medium text-slate-600">Cliente</label>
+  1731→                    <FilterDropdown
+  1732→                      label="Todos"
+  1733→                      options={clienteOptions}
+  1734→                      selected={oppClienteFilter}
+  1735→                      onChange={setOppClienteFilter}
+  1736→                    />
+  1737→                  </div>
+  1738→
+  1739→                  <div className="min-w-[150px] space-y-2">
+  1740→                    <label className="text-xs font-medium text-slate-600">Status</label>
+  1741→                    <FilterDropdown
+  1742→                      label="Todos"
+  1743→                      options={statusOptions}
+  1744→                      selected={oppStatusFilter}
+  1745→                      onChange={setOppStatusFilter}
+  1746→                    />
+  1747→                  </div>
+  1748→
+  1749→                  <div className="min-w-[150px] space-y-2">
+  1750→                    <label className="text-xs font-medium text-slate-600">Criticidade</label>
+  1751→                    <FilterDropdown
+  1752→                      label="Todas"
+  1753→                      options={criticidadeOptions}
+  1754→                      selected={oppCriticidadeFilter}
+  1755→                      onChange={setOppCriticidadeFilter}
+  1756→                    />
+  1757→                  </div>
+  1758→
+  1759→                  <div className="min-w-[150px] space-y-2">
+  1760→                    <label className="text-xs font-medium text-slate-600">Dias em Aberto</label>
+  1761→                    <FilterDropdown
+  1762→                      label="Todos"
+  1763→                      options={diasOptions}
+  1764→                      selected={oppDiasFilter}
+  1765→                      onChange={setOppDiasFilter}
+  1766→                    />
+  1767→                  </div>
+  1768→
+  1769→                  <div className="min-w-[150px] space-y-2">
+  1770→                    <label className="text-xs font-medium text-slate-600">Análise</label>
+  1771→                    <FilterDropdown
+  1772→                      label="Todos"
+  1773→                      options={analiseOptions}
+  1774→                      selected={oppAnaliseFilter}
+  1775→                      onChange={setOppAnaliseFilter}
+  1776→                    />
+  1777→                  </div>
+  1778→
+  1779→                  <div className="min-w-[150px] space-y-2">
+  1780→                    <label className="text-xs font-medium text-slate-600">Prazo</label>
+  1781→                    <FilterDropdown
+  1782→                      label="Todos"
+  1783→                      options={prazoOptions}
+  1784→                      selected={oppPrazoFilter}
+  1785→                      onChange={setOppPrazoFilter}
+  1786→                    />
+  1787→                  </div>
+  1788→                </div>
+  1789→              </CardContent>
+  1790→            </Card>
+  1791→
+  1792→            {/* Data Table */}
+  1793→            <Card className="bg-white/90 backdrop-blur-sm">
+  1794→              <CardHeader>
+  1795→                <div className="flex items-center justify-between">
+  1796→                  <CardTitle className="text-lg font-semibold text-slate-700">
+  1797→                    Lista de Oportunidades ({oppFilteredData.length} registros)
+  1798→                  </CardTitle>
+  1799→                  <Button
+  1800→                    variant="ghost"
+  1801→                    size="sm"
+  1802→                    className="h-8 w-8 p-0"
+  1803→                    onClick={() => setShowColumnConfigPassword(true)}
+  1804→                    title="Configurar colunas"
+  1805→                  >
+  1806→                    <Settings className="h-4 w-4 text-slate-600" />
+  1807→                  </Button>
+  1808→                </div>
+  1809→              </CardHeader>
+  1810→              <CardContent>
+  1811→                <div className="overflow-x-auto max-h-[600px]">
+  1812→                  <Table>
+  1813→                    <TableHeader className="sticky top-0 bg-slate-50 z-10">
+  1814→                      <TableRow>
+  1815→                        {visibleColumns.map((colKey) => {
+  1816→                          const column = allAvailableColumns.find(c => c.key === colKey);
+  1817→                          return column ? (
+  1818→                            <TableHead key={colKey} className="text-xs font-semibold text-slate-600 whitespace-nowrap">
+  1819→                              {column.label}
+  1820→                            </TableHead>
+  1821→                          ) : null;
+  1822→                        })}
+  1823→                      </TableRow>
+  1824→                    </TableHeader>
+  1825→                    <TableBody>
+  1826→                      {oppFilteredData.length === 0 ? (
+  1827→                        <TableRow>
+  1828→                          <TableCell colSpan={visibleColumns.length} className="text-center text-slate-400 py-8">
+  1829→                            Nenhum registro encontrado com os filtros aplicados
+  1830→                          </TableCell>
+  1831→                        </TableRow>
+  1832→                      ) : (
+  1833→                        oppFilteredData.map((record) => (
+  1834→                          <TableRow key={record.id} className="hover:bg-slate-50/50">
+  1835→                            {visibleColumns.map((colKey) => renderTableCell(record, colKey))}
+  1836→                          </TableRow>
+  1837→                        ))
+  1838→                      )}
+  1839→                    </TableBody>
+  1840→                  </Table>
+  1841→                </div>
+  1842→              </CardContent>
+  1843→            </Card>
+  1844→          </TabsContent>
+  1845→
+  1846→          {/* Ranking Tab */}
+  1847→          <TabsContent value="ranking" className="space-y-6">
+  1848→            <Card className="bg-white/90 backdrop-blur-sm">
+  1849→              <CardHeader>
+  1850→                <div className="flex items-center justify-between">
+  1851→                  <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1852→                    <TrendingUp className="h-5 w-5" />
+  1853→                    Ranking de Equipamentos
+  1854→                  </CardTitle>
+  1855→                  <div className="flex items-center gap-2">
+  1856→                    <label className="text-sm text-slate-600">Ordenar por:</label>
+  1857→                    <Select value={rankingType} onValueChange={(v: 'inspecao' | 'venda') => setRankingType(v)}>
+  1858→                      <SelectTrigger className="w-40 h-8 text-sm">
+  1859→                        <SelectValue />
+  1860→                      </SelectTrigger>
+  1861→                      <SelectContent>
+  1862→                        <SelectItem value="inspecao">Quantidade Inspeção</SelectItem>
+  1863→                        <SelectItem value="venda">Quantidade Vendida</SelectItem>
+  1864→                      </SelectContent>
+  1865→                    </Select>
+  1866→                  </div>
+  1867→                </div>
+  1868→              </CardHeader>
+  1869→              <CardContent>
+  1870→                <div className="overflow-x-auto">
+  1871→                  <Table>
+  1872→                    <TableHeader className="bg-slate-50">
+  1873→                      <TableRow>
+  1874→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap w-20">Posição</TableHead>
+  1875→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap">Equipamento</TableHead>
+  1876→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap text-right">Qtd. Inspeção</TableHead>
+  1877→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap text-right">Qtd. Vendida</TableHead>
+  1878→                      </TableRow>
+  1879→                    </TableHeader>
+  1880→                    <TableBody>
+  1881→                      {rankingData.map((item) => (
+  1882→                        <TableRow key={item.name} className="hover:bg-slate-50/50">
+  1883→                          <TableCell className="text-xs">
+  1884→                            <div
+  1885→                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+  1886→                                item.position === 1 ? 'bg-amber-400 text-white' :
+  1887→                                item.position === 2 ? 'bg-slate-400 text-white' :
+  1888→                                item.position === 3 ? 'bg-amber-600 text-white' :
+  1889→                                'bg-slate-200 text-slate-600'
+  1890→                              }`}
+  1891→                            >
+  1892→                              {item.position}
+  1893→                            </div>
+  1894→                          </TableCell>
+  1895→                          <TableCell className="text-xs font-medium text-slate-700">{item.name}</TableCell>
+  1896→                          <TableCell className="text-xs text-slate-600 text-right">{item.inspecao}</TableCell>
+  1897→                          <TableCell className="text-xs text-slate-600 text-right">{item.venda}</TableCell>
+  1898→                        </TableRow>
+  1899→                      ))}
+  1900→                    </TableBody>
+  1901→                  </Table>
+  1902→                </div>
+  1903→              </CardContent>
+  1904→            </Card>
+  1905→          </TabsContent>
+  1906→        </Tabs>
+  1907→      </main>
+  1908→
+  1909→      {/* Footer */}
+  1910→      <footer className="bg-white border-t border-slate-200 py-4 px-6 mt-auto">
+  1911→        <div className="w-full flex items-center justify-between text-xs text-slate-500">
+  1912→          <span>© 2025 Planilha de Oportunidade - Dashboard</span>
+  1913→          <span>{data.length} registros carregados</span>
+  1914→        </div>
+  1915→      </footer>
+  1916→
+  1917→      {/* Password Modal */}
+  1918→      <PasswordModal
+  1919→        open={showPasswordModal}
+  1920→        onOpenChange={setShowPasswordModal}
+  1921→        onConfirm={handleImportConfirmed}
+  1922→        title="Importar Arquivo Excel"
+  1923→        description="Digite a senha de administrador para importar os dados"
+  1924→      />
+  1925→
+  1926→      {/* Follow Up Modal */}
+  1927→      <Dialog open={showFollowUpModal} onOpenChange={setShowFollowUpModal}>
+  1928→        <DialogContent className="sm:max-w-[500px] bg-white z-[100]">
+  1929→          <DialogHeader>
+  1930→            <DialogTitle>Follow Up</DialogTitle>
+  1931→            <DialogDescription>
+  1932→              {followUpRecord && (
+  1933→                <span>
+  1934→                  <strong>PN:</strong> {followUpRecord.pn} | <strong>PO:</strong> {followUpRecord.pedidoCompra || 'N/A'} | <strong>OM:</strong> {followUpRecord.ordemManutencao || 'N/A'}
+  1935→                </span>
+  1936→              )}
+  1937→            </DialogDescription>
+  1938→          </DialogHeader>
+  1939→          <div className="grid gap-4 py-4">
+  1940→            <div className="grid gap-2">
+  1941→              <Textarea
+  1942→                placeholder="Digite as informações de follow up..."
+  1943→                value={followUpText}
+  1944→                onChange={(e) => setFollowUpText(e.target.value)}
+  1945→                rows={5}
+  1946→                disabled={deleteMode}
+  1947→              />
+  1948→            </div>
+  1949→
+  1950→            {/* Checkboxes de aplicação - mostrar em ambos os modos */}
+  1951→            {followUpRecord && (
+  1952→              <div className="space-y-2">
+  1953→                {followUpRecord.pedidoCompra && (
+  1954→                  <div className="flex items-center gap-2">
+  1955→                    <Checkbox
+  1956→                      id="apply-pedido"
+  1957→                      checked={applyToAllPedido}
+  1958→                      onCheckedChange={(checked) => setApplyToAllPedido(checked as boolean)}
+  1959→                    />
+  1960→                    <label htmlFor="apply-pedido" className="text-sm text-slate-600">
+  1961→                      Aplicar a todos os itens do pedido <strong>{followUpRecord.pedidoCompra}</strong>
+  1962→                    </label>
+  1963→                  </div>
+  1964→                )}
+  1965→
+  1966→                {followUpRecord.ordemManutencao && (
+  1967→                  <div className="flex items-center gap-2">
+  1968→                    <Checkbox
+  1969→                      id="apply-om"
+  1970→                      checked={applyToAllOM}
+  1971→                      onCheckedChange={(checked) => setApplyToAllOM(checked as boolean)}
+  1972→                    />
+  1973→                    <label htmlFor="apply-om" className="text-sm text-slate-600">
+  1974→                      Aplicar a todos os itens da OM <strong>{followUpRecord.ordemManutencao}</strong>
+  1975→                    </label>
+  1976→                  </div>
+  1977→                )}
+  1978→              </div>
+  1979→            )}
+  1980→
+  1981→            {/* Checkboxes de exclusão - só mostrar em modo de exclusão */}
+  1982→            {deleteMode && followUpRecord && (
+  1983→              <div className="space-y-2 pt-2 border-t">
+  1984→                <p className="text-sm font-medium text-slate-700 mb-2">Opções de Exclusão:</p>
+  1985→                <div className="flex items-center gap-2">
+  1986→                  <Checkbox
+  1987→                    id="delete-only"
+  1988→                    checked={!applyToAllPedido && !applyToAllOM}
+  1989→                    onCheckedChange={() => { setApplyToAllPedido(false); setApplyToAllOM(false); }}
+  1990→                  />
+  1991→                  <label htmlFor="delete-only" className="text-sm text-slate-600">
+  1992→                    Apenas este item
+  1993→                  </label>
+  1994→                </div>
+  1995→
+  1996→                {followUpRecord.pedidoCompra && (
+  1997→                  <div className="flex items-center gap-2">
+  1998→                    <Checkbox
+  1999→                      id="delete-pedido"
+  2000→                      checked={applyToAllPedido}
+
+[showing lines 1-2000 of 2135; use offset=2001 with limit to continue reading]
