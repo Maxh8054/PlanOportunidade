@@ -1,5 +1,11 @@
 // Planilha de Oportunidade - Types
 
+export interface FollowUpEntry {
+  text: string;
+  date: string; // ISO date string
+  dataBaseFim?: string; // ISO date string for "Data-base do fim"
+}
+
 export interface OpportunityRecord {
   id: number;
   origemAba: string;
@@ -49,6 +55,7 @@ export interface OpportunityRecord {
   diasParaEntrega: number | null;
   estoqueDisponivel: number;
   extraFields?: Record<string, string | number | Date | null>;
+  followUps?: FollowUpEntry[];
 }
 
 export type ExportType = 'completo' | 'servicos';

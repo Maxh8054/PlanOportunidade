@@ -211,6 +211,7 @@ export const COLUMNS_BY_ORIGIN: Record<string, { key: string; label: string }[]>
     { key: 'status', label: 'Status' },
     { key: 'diasEmAberto', label: 'Dias em Aberto' },
     { key: 'diasParaEntrega', label: 'Dias para Entrega' },
+    { key: 'followUp', label: '📋 Follow Ups' },
   ],
   'PAS SVS UEM': [
     { key: 'id', label: 'ID' },
@@ -242,6 +243,7 @@ export const COLUMNS_BY_ORIGIN: Record<string, { key: string; label: string }[]>
     { key: 'status', label: 'Status' },
     { key: 'diasEmAberto', label: 'Dias em Aberto' },
     { key: 'diasParaEntrega', label: 'Dias para Entrega' },
+    { key: 'followUp', label: '📋 Follow Ups' },
   ],
   'PAS SVS RED': [
     { key: 'id', label: 'ID' },
@@ -273,12 +275,13 @@ export const COLUMNS_BY_ORIGIN: Record<string, { key: string; label: string }[]>
     { key: 'status', label: 'Status' },
     { key: 'diasEmAberto', label: 'Dias em Aberto' },
     { key: 'diasParaEntrega', label: 'Dias para Entrega' },
+    { key: 'followUp', label: '📋 Follow Ups' },
   ],
 };
 
 // Colunas padrão visíveis por origem
 export const DEFAULT_COLUMNS_BY_ORIGIN: Record<string, string[]> = {
-  'PAS SVS Lundin': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'previsaoChegada', 'status', 'diasEmAberto'],
-  'PAS SVS UEM': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'status', 'diasEmAberto'],
-  'PAS SVS RED': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'status', 'diasEmAberto'],
+  'PAS SVS Lundin': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'followUp', 'previsaoChegada', 'status', 'diasEmAberto'],
+  'PAS SVS UEM': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'followUp', 'status', 'diasEmAberto'],
+  'PAS SVS RED': ['id', 'empresa', 'cliente', 'descricao', 'equipamento', 'pn', 'qty', 'criticidade', 'ordemManutencao', 'pedidoCompra', 'followUp', 'status', 'diasEmAberto'],
 };

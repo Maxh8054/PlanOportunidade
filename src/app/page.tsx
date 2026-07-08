@@ -63,6 +63,8 @@ import {
   Settings,
   Trash2,
   GripVertical,
+  History,
+  CalendarDays,
 } from 'lucide-react';
 import { PasswordModal } from '@/components/PasswordModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -75,7 +77,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEn
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-import type { OpportunityRecord } from '@/components/opportunity/types';
+import type { OpportunityRecord, FollowUpEntry } from '@/components/opportunity/types';
 import {
   SHEET_NAMES,
   SHEET_DISPLAY_NAMES,
@@ -327,9 +329,11 @@ export default function SalesOpportunityDashboard() {
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [followUpRecord, setFollowUpRecord] = useState<OpportunityRecord | null>(null);
   const [followUpText, setFollowUpText] = useState('');
+  const [followUpDataBaseFim, setFollowUpDataBaseFim] = useState('');
   const [applyToAllPedido, setApplyToAllPedido] = useState(false);
   const [applyToAllOM, setApplyToAllOM] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
   // JSON import state
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
@@ -417,6 +421,12 @@ export default function SalesOpportunityDashboard() {
             if (v != null && String(v).toLowerCase().includes(search)) return true;
           }
         }
+        // Search in follow-up texts
+        if (d.followUps && d.followUps.length > 0) {
+          for (const fu of d.followUps) {
+            if (fu.text?.toLowerCase().includes(search)) return true;
+          }
+        }
         return false;
       });
     }
@@ -477,6 +487,12 @@ export default function SalesOpportunityDashboard() {
             if (v != null && String(v).toLowerCase().includes(search)) return true;
           }
         }
+        // Search in follow-up texts
+        if (d.followUps && d.followUps.length > 0) {
+          for (const fu of d.followUps) {
+            if (fu.text?.toLowerCase().includes(search)) return true;
+          }
+        }
         return false;
       });
     }
@@ -511,8 +527,8 @@ export default function SalesOpportunityDashboard() {
         for (const f of oppAnaliseFilter) {
           if (f === 'completos' && d.quantidadeFaturada > 0 && d.quantidadeFaturada >= d.qty) return true;
           if (f === 'incompletos' && (d.quantidadeFaturada === 0 || d.quantidadeFaturada < d.qty)) return true;
-          if (f === 'com_followup' && (d.followUpComercial || d.followUpLocal)) return true;
-          if (f === 'sem_followup' && !d.followUpComercial && !d.followUpLocal) return true;
+          if (f === 'com_followup' && (d.followUpComercial || d.followUpLocal || (d.followUps && d.followUps.length > 0))) return true;
+          if (f === 'sem_followup' && !d.followUpComercial && !d.followUpLocal && (!d.followUps || d.followUps.length === 0)) return true;
         }
         return false;
       });
@@ -832,48 +848,72 @@ export default function SalesOpportunityDashboard() {
       const sheetData = dataByOrigin[sheetName] || [];
       let exportData: Record<string, unknown>[];
       if (tipo === 'servicos') {
-        exportData = sheetData.map(d => ({
-          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
-          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
-          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
-          'CRITICIDADE': d.criticidade, 'EM ESTOQUE': d.emEstoque,
-          'Data de troca': formatDateBR(d.dataTroca),
-          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
-          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
-          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
-          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
-          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
-          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
-          ...(d.extraFields || {}),
-        }));
+        exportData = sheetData.map(d => {
+          const followUps = d.followUps || [];
+          const latestFollowUp = followUps.length > 0 ? followUps[followUps.length - 1] : null;
+          const latestDataBaseFim = latestFollowUp?.dataBaseFim
+            ? new Date(latestFollowUp.dataBaseFim).toLocaleDateString('pt-BR')
+            : (d.extraFields?.['Data-base do fim'] instanceof Date ? formatDateBR(d.extraFields['Data-base do fim'] as Date) : String(d.extraFields?.['Data-base do fim'] || ''));
+          const allFollowUpText = followUps.map(fu => {
+            const dt = new Date(fu.date).toLocaleString('pt-BR');
+            const dbf = fu.dataBaseFim ? ` | Data-base fim: ${new Date(fu.dataBaseFim).toLocaleDateString('pt-BR')}` : '';
+            return `[${dt}]${dbf}: ${fu.text}`;
+          }).join('\n');
+          return {
+            'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+            'ID REPORT': d.extraFields?.['ID REPORT'] || '',
+            'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+            'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+            'CRITICIDADE': d.criticidade, 'EM ESTOQUE': d.emEstoque,
+            'Data de troca': formatDateBR(d.dataTroca),
+            'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+            'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+            'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+            'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+            'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+            'Follow Up/comercial': allFollowUpText || d.followUpComercial,
+            'Status': STATUS_CONFIG[d.status]?.label || d.status,
+            'Data-base do fim': latestDataBaseFim,
+            'Situação no Pedido (nossa carteira)': d.extraFields?.['Situação no Pedido (nossa carteira)'] || d.extraFields?.['Situacao no Pedido (nossa carteira)'] || d.disponibilidade || '',
+          };
+        });
       } else {
-        exportData = sheetData.map(d => ({
-          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
-          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
-          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
-          'Quantidade Inspeção': d.qty, 'Quantidade pedida': d.quantidadePedida,
-          'CRITICIDADE': d.criticidade, 'Betim': d.betim, 'LIC': d.lic,
-          'EM ESTOQUE': d.emEstoque, 'Importação': d.importacao,
-          'Data de troca': formatDateBR(d.dataTroca),
-          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
-          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
-          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
-          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
-          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
-          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
-          'Data Follow Up': formatDateBR(d.dataFollowUp),
-          'VÍNCULO PAS SVS': d.vinculoPasSvs, 'Número do pedido': d.numeroPedido,
-          'Data de recebimento do pedido': formatDateBR(d.dataRecebimentoPedido),
-          'Tipo do pedido': d.tipoPedido,
-          'Data de entrega solicitada': formatDateBR(d.dataEntregaSolicitada),
-          'Part number': d.partNumber, 'Replace': d.replace, 'Descrição.1': d.descricao1,
-          'Disponibilidade': d.disponibilidade, 'Quantidade faturada': d.quantidadeFaturada,
-          'Número do CIGAM': d.numeroCigam,
-          'Número do processo importação': d.numeroProcessoImportacao,
-          'Número da NF': d.numeroNF, 'Data de emissão da NF': formatDateBR(d.dataEmissaoNF),
-          'Observação': d.observacao,
-          ...(d.extraFields || {}),
-        }));
+        exportData = sheetData.map(d => {
+          const followUps = d.followUps || [];
+          const allFollowUpText = followUps.map(fu => {
+            const dt = new Date(fu.date).toLocaleString('pt-BR');
+            const dbf = fu.dataBaseFim ? ` | Data-base fim: ${new Date(fu.dataBaseFim).toLocaleDateString('pt-BR')}` : '';
+            return `[${dt}]${dbf}: ${fu.text}`;
+          }).join('\n');
+          return {
+            'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+            'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+            'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+            'Quantidade Inspeção': d.qty, 'Quantidade pedida': d.quantidadePedida,
+            'CRITICIDADE': d.criticidade, 'Betim': d.betim, 'LIC': d.lic,
+            'EM ESTOQUE': d.emEstoque, 'Importação': d.importacao,
+            'Data de troca': formatDateBR(d.dataTroca),
+            'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+            'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+            'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+            'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+            'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+            'Follow Up/comercial': d.followUpComercial,
+            'Follow Up Local': allFollowUpText || d.followUpLocal,
+            'Data Follow Up': formatDateBR(d.dataFollowUp),
+            'VÍNCULO PAS SVS': d.vinculoPasSvs, 'Número do pedido': d.numeroPedido,
+            'Data de recebimento do pedido': formatDateBR(d.dataRecebimentoPedido),
+            'Tipo do pedido': d.tipoPedido,
+            'Data de entrega solicitada': formatDateBR(d.dataEntregaSolicitada),
+            'Part number': d.partNumber, 'Replace': d.replace, 'Descrição.1': d.descricao1,
+            'Disponibilidade': d.disponibilidade, 'Quantidade faturada': d.quantidadeFaturada,
+            'Número do CIGAM': d.numeroCigam,
+            'Número do processo importação': d.numeroProcessoImportacao,
+            'Número da NF': d.numeroNF, 'Data de emissão da NF': formatDateBR(d.dataEmissaoNF),
+            'Observação': d.observacao,
+            ...(d.extraFields || {}),
+          };
+        });
       }
       const ws = XLSX.utils.json_to_sheet(exportData);
       const exportSheetName = tipo === 'servicos' ? (SHEET_DISPLAY_NAMES[sheetName] || sheetName) : sheetName;
@@ -890,6 +930,7 @@ export default function SalesOpportunityDashboard() {
       totalRecords: data.length,
       data: data.map(d => ({
         ...d,
+        followUps: d.followUps || [],
         dataAbertura: d.dataAbertura?.toISOString() || null,
         dataTroca: d.dataTroca?.toISOString() || null,
         dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
@@ -986,6 +1027,11 @@ export default function SalesOpportunityDashboard() {
           }
           return ef;
         })() : undefined,
+        followUps: Array.isArray(d.followUps) ? d.followUps.map((fu: Record<string, unknown>) => ({
+          text: String(fu.text || ''),
+          date: String(fu.date || new Date().toISOString()),
+          dataBaseFim: fu.dataBaseFim ? String(fu.dataBaseFim) : undefined,
+        })) : [],
       }));
       setData(parsedData);
       if (jsonData.excelHeadersByOrigin) {
@@ -1012,36 +1058,63 @@ export default function SalesOpportunityDashboard() {
   };
   const openFollowUpModal = (record: OpportunityRecord) => {
     setFollowUpRecord(record);
-    setFollowUpText(record.followUpLocal || record.followUpComercial || '');
+    setFollowUpText('');
+    setFollowUpDataBaseFim('');
     setApplyToAllPedido(false);
     setApplyToAllOM(false);
     setDeleteMode(false);
+    setDeleteIndex(null);
     setShowFollowUpModal(true);
   };
   const saveFollowUp = () => {
     if (!followUpRecord) return;
 
-    const now = new Date();
-
-    // Modo de exclusão
-    if (deleteMode) {
+    // Delete a specific follow-up entry
+    if (deleteMode && deleteIndex !== null) {
       setData(prevData => {
-        const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
-        const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
-
         return prevData.map(d => {
-          // Aplicar a todos do pedido, OM ou apenas este item
-          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
-              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
-              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
-            return { ...d, followUpLocal: '', dataFollowUp: null };
+          if (d.id === followUpRecord.id) {
+            const newFollowUps = [...(d.followUps || [])];
+            newFollowUps.splice(deleteIndex, 1);
+            return { ...d, followUps: newFollowUps };
           }
           return d;
         });
       });
+      setShowFollowUpModal(false);
+      setDeleteMode(false);
+      setDeleteIndex(null);
+      return;
     }
-    // Modo de salvamento
-    else if (followUpText.trim()) {
+
+    // Delete all follow-ups for this record (or matching PO/OM)
+    if (deleteMode && deleteIndex === null) {
+      setData(prevData => {
+        const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
+        const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
+        return prevData.map(d => {
+          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
+              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
+              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
+            return { ...d, followUps: [], followUpLocal: '', dataFollowUp: null };
+          }
+          return d;
+        });
+      });
+      setShowFollowUpModal(false);
+      setDeleteMode(false);
+      setDeleteIndex(null);
+      return;
+    }
+
+    // Add new follow-up entry
+    if (followUpText.trim()) {
+      const newEntry: FollowUpEntry = {
+        text: followUpText.trim(),
+        date: new Date().toISOString(),
+        dataBaseFim: followUpDataBaseFim || undefined,
+      };
+
       const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
       const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
 
@@ -1050,19 +1123,31 @@ export default function SalesOpportunityDashboard() {
           if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
               (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
               (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
-            return { ...d, followUpLocal: followUpText, dataFollowUp: now };
+            const existing = d.followUps || [];
+            const updatedFollowUps = [...existing, newEntry];
+            return {
+              ...d,
+              followUps: updatedFollowUps,
+              followUpLocal: newEntry.text,
+              dataFollowUp: new Date(),
+            };
           }
           return d;
         });
       });
+
+      setFollowUpText('');
+      setFollowUpDataBaseFim('');
     }
 
     setShowFollowUpModal(false);
     setFollowUpRecord(null);
     setFollowUpText('');
+    setFollowUpDataBaseFim('');
     setApplyToAllPedido(false);
     setApplyToAllOM(false);
     setDeleteMode(false);
+    setDeleteIndex(null);
   };
 
   const startDeleteMode = () => {
@@ -1130,20 +1215,27 @@ export default function SalesOpportunityDashboard() {
             </Badge>
           </TableCell>
         );
-      case 'followUp':
+      case 'followUp': {
+        const count = (record.followUps || []).length;
         return (
           <TableCell className="text-xs">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0"
+              className="h-7 gap-1.5 px-2"
               onClick={() => openFollowUpModal(record)}
-              title={record.followUpLocal || record.followUpComercial || 'Adicionar Follow Up'}
+              title={count > 0 ? `${count} follow up(s) registrado(s)` : 'Adicionar Follow Up'}
             >
-              <MessageCircle className="h-3.5 w-3.5" style={{ color: (record.followUpLocal || record.followUpComercial) ? '#FF6600' : '#94a3b8' }} />
+              <History className="h-3.5 w-3.5" style={{ color: count > 0 ? '#FF6600' : '#94a3b8' }} />
+              {count > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full text-[10px] font-bold" style={{ backgroundColor: '#FF6600', color: 'white' }}>
+                  {count}
+                </span>
+              )}
             </Button>
           </TableCell>
         );
+      }
       case 'dataAbertura':
       case 'dataTroca':
       case 'dataAberturaOM':
@@ -1924,116 +2016,204 @@ export default function SalesOpportunityDashboard() {
       />
 
       {/* Follow Up Modal */}
-      <Dialog open={showFollowUpModal} onOpenChange={setShowFollowUpModal}>
-        <DialogContent className="sm:max-w-[500px] bg-white z-[100]">
+      <Dialog open={showFollowUpModal} onOpenChange={(open) => { if (!open) { setShowFollowUpModal(false); setDeleteMode(false); setDeleteIndex(null); } else { setShowFollowUpModal(true); } }}>
+        <DialogContent className="sm:max-w-[600px] bg-white z-[100] flex flex-col max-h-[85vh]">
           <DialogHeader>
-            <DialogTitle>Follow Up</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" style={{ color: '#FF6600' }} />
+              Follow Up - Histórico
+            </DialogTitle>
             <DialogDescription>
               {followUpRecord && (
-                <span>
+                <span className="text-sm">
                   <strong>PN:</strong> {followUpRecord.pn} | <strong>PO:</strong> {followUpRecord.pedidoCompra || 'N/A'} | <strong>OM:</strong> {followUpRecord.ordemManutencao || 'N/A'}
                 </span>
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Textarea
-                placeholder="Digite as informações de follow up..."
-                value={followUpText}
-                onChange={(e) => setFollowUpText(e.target.value)}
-                rows={5}
-                disabled={deleteMode}
-              />
-            </div>
 
-            {/* Checkboxes de aplicação - mostrar em ambos os modos */}
-            {followUpRecord && (
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-2">
+            {/* Follow Up History List */}
+            {followUpRecord && (followUpRecord.followUps || []).length > 0 && (
               <div className="space-y-2">
-                {followUpRecord.pedidoCompra && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="apply-pedido"
-                      checked={applyToAllPedido}
-                      onCheckedChange={(checked) => setApplyToAllPedido(checked as boolean)}
-                    />
-                    <label htmlFor="apply-pedido" className="text-sm text-slate-600">
-                      Aplicar a todos os itens do pedido <strong>{followUpRecord.pedidoCompra}</strong>
-                    </label>
-                  </div>
-                )}
+                <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Histórico de Follow Ups ({(followUpRecord.followUps || []).length})
+                </h4>
+                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                  {[...(followUpRecord.followUps || [])].reverse().map((fu, revIdx) => {
+                    const realIdx = (followUpRecord!.followUps || []).length - 1 - revIdx;
+                    const fuDate = new Date(fu.date);
+                    return (
+                      <div
+                        key={realIdx}
+                        className={`relative border rounded-lg p-3 text-sm bg-slate-50 ${deleteMode ? 'cursor-pointer hover:border-red-400 hover:bg-red-50 transition-colors' : ''}`}
+                        onClick={() => {
+                          if (deleteMode) {
+                            setDeleteIndex(realIdx);
+                          }
+                        }}
+                      >
+                        {deleteMode && (
+                          <div className="absolute top-2 right-2">
+                            {deleteIndex === realIdx ? (
+                              <CheckCircle className="h-4 w-4 text-red-500" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-slate-300" />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+                          <CalendarDays className="h-3 w-3" />
+                          {fuDate.toLocaleString('pt-BR')}
+                        </div>
+                        <p className="text-slate-700 whitespace-pre-wrap pr-6">{fu.text}</p>
+                        {fu.dataBaseFim && (
+                          <div className="mt-2 flex items-center gap-2 text-xs">
+                            <CalendarDays className="h-3 w-3 text-orange-500" />
+                            <span className="text-orange-600 font-medium">Data-base do fim: {new Date(fu.dataBaseFim).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-                {followUpRecord.ordemManutencao && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="apply-om"
-                      checked={applyToAllOM}
-                      onCheckedChange={(checked) => setApplyToAllOM(checked as boolean)}
-                    />
-                    <label htmlFor="apply-om" className="text-sm text-slate-600">
-                      Aplicar a todos os itens da OM <strong>{followUpRecord.ordemManutencao}</strong>
-                    </label>
+            {followUpRecord && (followUpRecord.followUps || []).length === 0 && (
+              <div className="text-center py-6 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+                <History className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                Nenhum follow up registrado para este item
+              </div>
+            )}
+
+            {/* Add New Follow Up */}
+            {!deleteMode && (
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <h4 className="text-sm font-semibold text-slate-700">Novo Follow Up</h4>
+                <Textarea
+                  placeholder="Digite as informações de follow up..."
+                  value={followUpText}
+                  onChange={(e) => setFollowUpText(e.target.value)}
+                  rows={3}
+                />
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-slate-600 whitespace-nowrap">Data-base do fim:</label>
+                  <Input
+                    type="date"
+                    value={followUpDataBaseFim}
+                    onChange={(e) => setFollowUpDataBaseFim(e.target.value)}
+                    className="h-8 text-sm max-w-[180px]"
+                  />
+                </div>
+
+                {/* Apply to checkboxes */}
+                {followUpRecord && (
+                  <div className="space-y-2 pt-1">
+                    {followUpRecord.pedidoCompra && (
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="apply-pedido"
+                          checked={applyToAllPedido}
+                          onCheckedChange={(checked) => setApplyToAllPedido(checked as boolean)}
+                        />
+                        <label htmlFor="apply-pedido" className="text-sm text-slate-600">
+                          Aplicar a todos os itens do pedido <strong>{followUpRecord.pedidoCompra}</strong>
+                        </label>
+                      </div>
+                    )}
+                    {followUpRecord.ordemManutencao && (
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="apply-om"
+                          checked={applyToAllOM}
+                          onCheckedChange={(checked) => setApplyToAllOM(checked as boolean)}
+                        />
+                        <label htmlFor="apply-om" className="text-sm text-slate-600">
+                          Aplicar a todos os itens da OM <strong>{followUpRecord.ordemManutencao}</strong>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Checkboxes de exclusão - só mostrar em modo de exclusão */}
-            {deleteMode && followUpRecord && (
-              <div className="space-y-2 pt-2 border-t">
-                <p className="text-sm font-medium text-slate-700 mb-2">Opções de Exclusão:</p>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="delete-only"
-                    checked={!applyToAllPedido && !applyToAllOM}
-                    onCheckedChange={() => { setApplyToAllPedido(false); setApplyToAllOM(false); }}
-                  />
-                  <label htmlFor="delete-only" className="text-sm text-slate-600">
-                    Apenas este item
-                  </label>
+            {/* Delete mode options */}
+            {deleteMode && (
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <h4 className="text-sm font-semibold text-red-600">Modo de Exclusão</h4>
+                <p className="text-xs text-slate-500">Clique em um follow up acima para selecioná-lo, ou use as opções abaixo:</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="delete-selected"
+                      checked={deleteIndex === null && applyToAllPedido}
+                      onCheckedChange={() => { setDeleteIndex(null); setApplyToAllPedido(true); setApplyToAllOM(false); }}
+                    />
+                    <label htmlFor="delete-selected" className="text-sm text-slate-600">
+                      {followUpRecord?.pedidoCompra ? `Apagar todos do pedido ${followUpRecord.pedidoCompra}` : 'Apagar todos os follow ups deste item'}
+                    </label>
+                  </div>
+                  {followUpRecord?.ordemManutencao && (
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="delete-om"
+                        checked={deleteIndex === null && applyToAllOM}
+                        onCheckedChange={() => { setDeleteIndex(null); setApplyToAllOM(true); setApplyToAllPedido(false); }}
+                      />
+                      <label htmlFor="delete-om" className="text-sm text-slate-600">
+                        Apagar todos da OM <strong>{followUpRecord.ordemManutencao}</strong>
+                      </label>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="delete-all-item"
+                      checked={deleteIndex === null && !applyToAllPedido && !applyToAllOM}
+                      onCheckedChange={() => { setDeleteIndex(null); setApplyToAllPedido(false); setApplyToAllOM(false); }}
+                    />
+                    <label htmlFor="delete-all-item" className="text-sm text-slate-600">
+                      Apagar todos os follow ups deste item
+                    </label>
+                  </div>
                 </div>
-
-                {followUpRecord.pedidoCompra && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="delete-pedido"
-                      checked={applyToAllPedido}
-                      onCheckedChange={(checked) => { setApplyToAllPedido(checked as boolean); setApplyToAllOM(false); }}
-                    />
-                    <label htmlFor="delete-pedido" className="text-sm text-slate-600">
-                      Todos do pedido <strong>{followUpRecord.pedidoCompra}</strong>
-                    </label>
-                  </div>
-                )}
-
-                {followUpRecord.ordemManutencao && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="delete-om"
-                      checked={applyToAllOM}
-                      onCheckedChange={(checked) => { setApplyToAllOM(checked as boolean); setApplyToAllPedido(false); }}
-                    />
-                    <label htmlFor="delete-om" className="text-sm text-slate-600">
-                      Todos da OM <strong>{followUpRecord.ordemManutencao}</strong>
-                    </label>
-                  </div>
-                )}
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFollowUpModal(false)}>
+
+          <DialogFooter className="pt-3 border-t">
+            <Button variant="outline" onClick={() => { setShowFollowUpModal(false); setDeleteMode(false); setDeleteIndex(null); }}>
               Cancelar
             </Button>
-            {!deleteMode && (
-              <Button onClick={startDeleteMode} className="bg-red-500 hover:bg-red-600 text-white">
+            {!deleteMode && (followUpRecord?.followUps || []).length > 0 && (
+              <Button onClick={() => { setDeleteMode(true); setDeleteIndex(null); }} className="bg-red-500 hover:bg-red-600 text-white">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Apagar
               </Button>
             )}
-            <Button onClick={saveFollowUp} style={{ backgroundColor: '#FF6600', color: 'white' }}>
-              {deleteMode ? 'Confirmar Exclusão' : 'Salvar'}
-            </Button>
+            {deleteMode && (
+              <Button variant="outline" onClick={() => { setDeleteMode(false); setDeleteIndex(null); }}>
+                Voltar ao modo normal
+              </Button>
+            )}
+            {!deleteMode && (
+              <Button
+                onClick={saveFollowUp}
+                disabled={!followUpText.trim()}
+                style={{ backgroundColor: followUpText.trim() ? '#FF6600' : undefined, color: followUpText.trim() ? 'white' : undefined }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Follow Up
+              </Button>
+            )}
+            {deleteMode && (
+              <Button onClick={saveFollowUp} className="bg-red-500 hover:bg-red-600 text-white">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Confirmar Exclusão
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
