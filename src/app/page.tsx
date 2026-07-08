@@ -478,10 +478,28 @@ export default function SalesOpportunityDashboard() {
     if (oppSearchTerm) {
       const search = oppSearchTerm.toLowerCase();
       result = result.filter(d => {
-        if (d.pn?.toLowerCase().includes(search)) return true;
-        if (d.partname?.toLowerCase().includes(search)) return true;
-        if (d.cliente?.toLowerCase().includes(search)) return true;
-        if (d.descricao?.toLowerCase().includes(search)) return true;
+        // Search in ALL fields of the record
+        const allValues: string[] = [
+          d.id, d.origemAba, d.empresa, d.cliente, d.descricao, d.equipamento,
+          d.mes, d.pn, d.partname, d.qty, d.criticidade, d.betim, d.lic,
+          d.emEstoque, d.ordemManutencao, d.pedidoCompra, d.requisicaoCompra,
+          d.notaFiscal, d.followUpComercial, d.followUpLocal, d.vinculoPasSvs,
+          d.numeroPedido, d.tipoPedido, d.partNumber, d.replace, d.descricao1,
+          d.disponibilidade, d.numeroCigam, d.numeroProcessoImportacao,
+          d.numeroNF, d.observacao, d.cliente1, d.quantidadeAFaturar,
+          formatDateBR(d.dataAbertura), formatDateBR(d.dataTroca),
+          formatDateBR(d.dataAberturaOM), formatDateBR(d.previsaoChegada),
+          formatDateBR(d.dataVenda), formatDateBR(d.dataFollowUp),
+          formatDateBR(d.dataRecebimentoPedido), formatDateBR(d.dataEntregaSolicitada),
+          formatDateBR(d.dataEmissaoNF),
+          STATUS_CONFIG[d.status]?.label || d.status,
+          d.diasEmAberto, d.diasParaEntrega, d.estoqueDisponivel,
+          d.quantidadePedida, d.quantidadeFaturada, d.importacao,
+        ];
+        for (const v of allValues) {
+          if (v != null && String(v).toLowerCase().includes(search)) return true;
+        }
+        // Search in extra fields
         if (d.extraFields) {
           for (const v of Object.values(d.extraFields)) {
             if (v != null && String(v).toLowerCase().includes(search)) return true;
@@ -491,6 +509,10 @@ export default function SalesOpportunityDashboard() {
         if (d.followUps && d.followUps.length > 0) {
           for (const fu of d.followUps) {
             if (fu.text?.toLowerCase().includes(search)) return true;
+            if (fu.dataBaseFim) {
+              const dbfStr = new Date(fu.dataBaseFim).toLocaleDateString('pt-BR');
+              if (dbfStr.toLowerCase().includes(search)) return true;
+            }
           }
         }
         return false;
@@ -1443,7 +1465,7 @@ export default function SalesOpportunityDashboard() {
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-slate-600">Busca</label>
                     <Input
-                      placeholder="PN, Descrição, Cliente..."
+                      placeholder="Pesquisar em todos os campos..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="h-9 text-sm"
@@ -1779,7 +1801,7 @@ export default function SalesOpportunityDashboard() {
                   <div className="flex-1 min-w-[200px] space-y-2">
                     <label className="text-xs font-medium text-slate-600">Busca</label>
                     <Input
-                      placeholder="PN, Descrição, Cliente..."
+                      placeholder="Pesquisar em todos os campos..."
                       value={oppSearchTerm}
                       onChange={(e) => setOppSearchTerm(e.target.value)}
                       className="h-9 text-sm"
