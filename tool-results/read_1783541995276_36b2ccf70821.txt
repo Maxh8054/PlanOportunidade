@@ -1,0 +1,2000 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useMemo, useRef, useEffect } from 'react';
+     4→     4→import * as XLSX from 'xlsx';
+     5→     5→import {
+     6→     6→  Card,
+     7→     7→  CardContent,
+     8→     8→  CardHeader,
+     9→     9→  CardTitle,
+    10→    10→} from '@/components/ui/card';
+    11→    11→import {
+    12→    12→  Select,
+    13→    13→  SelectContent,
+    14→    14→  SelectItem,
+    15→    15→  SelectTrigger,
+    16→    16→  SelectValue,
+    17→    17→} from '@/components/ui/select';
+    18→    18→import { Badge } from '@/components/ui/badge';
+    19→    19→import { Button } from '@/components/ui/button';
+    20→    20→import { Input } from '@/components/ui/input';
+    21→    21→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    22→    22→import {
+    23→    23→  Table,
+    24→    24→  TableBody,
+    25→    25→  TableCell,
+    26→    26→  TableHead,
+    27→    27→  TableHeader,
+    28→    28→  TableRow,
+    29→    29→} from '@/components/ui/table';
+    30→    30→import {
+    31→    31→  XAxis,
+    32→    32→  YAxis,
+    33→    33→  CartesianGrid,
+    34→    34→  Tooltip,
+    35→    35→  Legend,
+    36→    36→  ResponsiveContainer,
+    37→    37→  BarChart,
+    38→    38→  Bar,
+    39→    39→  PieChart,
+    40→    40→  Pie,
+    41→    41→  Cell,
+    42→    42→} from 'recharts';
+    43→    43→import {
+    44→    44→  Upload,
+    45→    45→  FileSpreadsheet,
+    46→    46→  Download,
+    47→    47→  ShoppingCart,
+    48→    48→  BarChart3,
+    49→    49→  Target,
+    50→    50→  Package,
+    51→    51→  Wrench,
+    52→    52→  TrendingUp,
+    53→    53→  Filter,
+    54→    54→  ChevronDown,
+    55→    55→  X,
+    56→    56→  MessageSquare,
+    57→    57→  Plus,
+    58→    58→  MessageCircle,
+    59→    59→  FileJson,
+    60→    60→  Clock,
+    61→    61→  CheckCircle,
+    62→    62→  RefreshCw,
+    63→    63→  Settings,
+    64→    64→  Trash2,
+    65→    65→  GripVertical,
+    66→    66→} from 'lucide-react';
+    67→    67→import { PasswordModal } from '@/components/PasswordModal';
+    68→    68→import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+    69→    69→import { Textarea } from '@/components/ui/textarea';
+    70→    70→import { Checkbox } from '@/components/ui/checkbox';
+    71→    71→import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+    72→    72→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+    73→    73→import { FilterDropdown } from '@/components/FilterDropdown';
+    74→    74→import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+    75→    75→import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+    76→    76→import { CSS } from '@dnd-kit/utilities';
+    77→    77→
+    78→    78→import type { OpportunityRecord } from '@/components/opportunity/types';
+    79→    79→import {
+    80→    80→  SHEET_NAMES,
+    81→    81→  SHEET_DISPLAY_NAMES,
+    82→    82→  COLORS,
+    83→    83→  CRITICITY_COLORS,
+    84→    84→  STATUS_CONFIG,
+    85→    85→  PIE_COLORS,
+    86→    86→  MONTHS,
+    87→    87→  COLUMN_MAP,
+    88→    88→  COLUMNS_BY_ORIGIN,
+    89→    89→  DEFAULT_COLUMNS_BY_ORIGIN,
+    90→    90→} from '@/components/opportunity/constants';
+    91→    91→import {
+    92→    92→  parseDate,
+    93→    93→  parseNumber,
+    94→    94→  parseCriticidade,
+    95→    95→  determineStatus,
+    96→    96→  getStockInfo,
+    97→    97→  formatDateBR,
+    98→    98→} from '@/components/opportunity/utils';
+    99→    99→
+   100→   100→// Sortable Column Item for Drag and Drop
+   101→   101→function SortableColumnItem({ column, onRemove }: { column: { key: string; label: string }; onRemove: (key: string) => void }) {
+   102→   102→  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: column.key });
+   103→   103→  const style = { transform: CSS.Transform.toString(transform), transition };
+   104→   104→  return (
+   105→   105→    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors">
+   106→   106→      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 shrink-0">
+   107→   107→        <GripVertical className="h-4 w-4" />
+   108→   108→      </button>
+   109→   109→      <span className="flex-1 text-sm text-slate-700 truncate">{column.label}</span>
+   110→   110→      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0" onClick={() => onRemove(column.key)}>
+   111→   111→        <X className="h-3.5 w-3.5" />
+   112→   112→      </Button>
+   113→   113→    </div>
+   114→   114→  );
+   115→   115→}
+   116→   116→
+   117→   117→// Stock Badge Component
+   118→   118→function AnaliseEstoqueBadge({ record }: { record: OpportunityRecord }) {
+   119→   119→  const info = getStockInfo(record);
+   120→   120→  return (
+   121→   121→    <div className="flex flex-col items-center gap-1">
+   122→   122→      <Badge style={{ backgroundColor: info.bgColor, color: info.textColor }}>
+   123→   123→        {info.localEstoque}
+   124→   124→      </Badge>
+   125→   125→      <span className="text-xs text-slate-500">
+   126→   126→        {info.coberturaTotal ? '✓' : `Falta: ${info.saldo}`}
+   127→   127→      </span>
+   128→   128→    </div>
+   129→   129→  );
+   130→   130→}
+   131→   131→
+   132→   132→export default function SalesOpportunityDashboard() {
+   133→   133→  const [data, setData] = useState<OpportunityRecord[]>([]);
+   134→   134→  const [isLoading, setIsLoading] = useState(false);
+   135→   135→  const [isSyncing, setIsSyncing] = useState(false);
+   136→   136→  const [lastSync, setLastSync] = useState<string | null>(null);
+   137→   137→  const [showPasswordModal, setShowPasswordModal] = useState(false);
+   138→   138→  const [pendingFile, setPendingFile] = useState<File | null>(null);
+   139→   139→  const [activeTab, setActiveTab] = useState('overview');
+   140→   140→  const fileInputRef = useRef<HTMLInputElement>(null);
+   141→   141→  const hasLoadedRef = useRef(false);
+   142→   142→
+   143→   143→  // Column configuration state
+   144→   144→  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+   145→   145→  const [showColumnConfigModal, setShowColumnConfigModal] = useState(false);
+   146→   146→  const [showColumnConfigPassword, setShowColumnConfigPassword] = useState(false);
+   147→   147→  const [tempVisibleColumns, setTempVisibleColumns] = useState<string[]>([]);
+   148→   148→  const sensors = useSensors(useSensor(PointerSensor));
+   149→   149→
+   150→   150→  // Helper: parse dates from JSON
+   151→   151→  const parseDates = (d: Record<string, unknown>, index: number): Record<string, unknown> => ({
+   152→   152→    ...d,
+   153→   153→    id: index + 1,
+   154→   154→    dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
+   155→   155→    dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
+   156→   156→    dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
+   157→   157→    previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
+   158→   158→    dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
+   159→   159→    dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
+   160→   160→    dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
+   161→   161→    dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
+   162→   162→    dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
+   163→   163→    dataDisponibilidade: (d as Record<string, unknown>).dataDisponibilidade ? new Date((d as Record<string, unknown>).dataDisponibilidade as string) : null,
+   164→   164→  });
+   165→   165→
+   166→   166→  // Helper: serialize dates to JSON
+   167→   167→  const serializeData = (records: OpportunityRecord[]) => records.map(d => ({
+   168→   168→    ...d,
+   169→   169→    dataAbertura: d.dataAbertura?.toISOString() || null,
+   170→   170→    dataTroca: d.dataTroca?.toISOString() || null,
+   171→   171→    dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
+   172→   172→    previsaoChegada: d.previsaoChegada?.toISOString() || null,
+   173→   173→    dataVenda: d.dataVenda?.toISOString() || null,
+   174→   174→    dataFollowUp: d.dataFollowUp?.toISOString() || null,
+   175→   175→    dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
+   176→   176→    dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
+   177→   177→    dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
+   178→   178→    dataDisponibilidade: (d as unknown as Record<string, unknown>).dataDisponibilidade ? new Date((d as unknown as Record<string, unknown>).dataDisponibilidade as string).toISOString() : null,
+   179→   179→  }));
+   180→   180→
+   181→   181→  // Load from API on mount
+   182→   182→  useEffect(() => {
+   183→   183→    if (hasLoadedRef.current) return;
+   184→   184→    hasLoadedRef.current = true;
+   185→   185→    loadData();
+   186→   186→  }, []);
+   187→   187→
+   188→   188→  async function loadData() {
+   189→   189→    setIsSyncing(true);
+   190→   190→    try {
+   191→   191→      const res = await fetch('/api/dashboard-data');
+   192→   192→      const json = await res.json();
+   193→   193→      if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+   194→   194→        const parsed = json.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord);
+   195→   195→        setData(parsed);
+   196→   196→        setLastSync(json.updatedAt ? new Date(json.updatedAt).toLocaleString('pt-BR') : new Date().toLocaleString('pt-BR'));
+   197→   197→      } else {
+   198→   198→        // Fallback to localStorage
+   199→   199→        try {
+   200→   200→          const saved = localStorage.getItem('dashboard_oportunidades_data');
+   201→   201→          if (saved) {
+   202→   202→            const parsed = JSON.parse(saved);
+   203→   203→            if (parsed.data && Array.isArray(parsed.data)) {
+   204→   204→              setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+   205→   205→            }
+   206→   206→          }
+   207→   207→        } catch { /* ignore */ }
+   208→   208→      }
+   209→   209→    } catch {
+   210→   210→      // API not available (local dev) - fallback to localStorage
+   211→   211→      try {
+   212→   212→        const saved = localStorage.getItem('dashboard_oportunidades_data');
+   213→   213→        if (saved) {
+   214→   214→          const parsed = JSON.parse(saved);
+   215→   215→          if (parsed.data && Array.isArray(parsed.data)) {
+   216→   216→            setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+   217→   217→          }
+   218→   218→        }
+   219→   219→      } catch { /* ignore */ }
+   220→   220→    } finally {
+   221→   221→      setIsSyncing(false);
+   222→   222→    }
+   223→   223→  }
+   224→   224→
+   225→   225→  // Column config is now loaded based on origin in the useEffect above
+   226→   226→
+   227→   227→  // Save to API + localStorage whenever data changes
+   228→   228→  useEffect(() => {
+   229→   229→    if (data.length === 0) return;
+   230→   230→    // Always save to localStorage
+   231→   231→    const exportData = {
+   232→   232→      exportDate: new Date().toISOString(),
+   233→   233→      totalRecords: data.length,
+   234→   234→      data: serializeData(data),
+   235→   235→    };
+   236→   236→    localStorage.setItem('dashboard_oportunidades_data', JSON.stringify(exportData));
+   237→   237→    // Try to save to API (don't await, fire and forget)
+   238→   238→    fetch('/api/dashboard-data', {
+   239→   239→      method: 'POST',
+   240→   240→      headers: { 'Content-Type': 'application/json' },
+   241→   241→      body: JSON.stringify({ data: serializeData(data), totalRecords: data.length }),
+   242→   242→    }).then(res => res.json()).then(json => {
+   243→   243→      if (json.success) {
+   244→   244→        setLastSync(new Date().toLocaleString('pt-BR'));
+   245→   245→      } else {
+   246→   246→        console.error('Sync failed:', json.error);
+   247→   247→      }
+   248→   248→    }).catch(err => {
+   249→   249→      console.error('Sync failed:', err);
+   250→   250→    });
+   251→   251→  }, [data]);
+   252→   252→
+   253→   253→  // Overview Filters
+   254→   254→  const [empresaFilter, setEmpresaFilter] = useState<string[]>([]);
+   255→   255→  const [clienteFilter, setClienteFilter] = useState<string[]>([]);
+   256→   256→  const [equipamentoFilter, setEquipamentoFilter] = useState<string[]>([]);
+   257→   257→  const [criticidadeFilter, setCriticidadeFilter] = useState<string[]>([]);
+   258→   258→  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+   259→   259→  const [periodFilter, setPeriodFilter] = useState<string[]>([]);
+   260→   260→  const [searchTerm, setSearchTerm] = useState('');
+   261→   261→  const [estoqueFilter, setEstoqueFilter] = useState<string[]>([]);
+   262→   262→  const [rankingType, setRankingType] = useState<'inspecao' | 'venda'>('inspecao');
+   263→   263→  const [chartYearFilter, setChartYearFilter] = useState<string>('');
+   264→   264→  const [showOverviewFilters, setShowOverviewFilters] = useState(false);
+   265→   265→  const [showOppFilters, setShowOppFilters] = useState(false);
+   266→   266→
+   267→   267→  // Opportunities Tab Filters (multi-select)
+   268→   268→  const [oppMonthFilter, setOppMonthFilter] = useState<string[]>([]);
+   269→   269→  const [oppYearFilter, setOppYearFilter] = useState<string[]>([]);
+   270→   270→  const [oppClienteFilter, setOppClienteFilter] = useState<string[]>([]);
+   271→   271→  const [oppStatusFilter, setOppStatusFilter] = useState<string[]>([]);
+   272→   272→  const [oppCriticidadeFilter, setOppCriticidadeFilter] = useState<string[]>([]);
+   273→   273→  const [oppDiasFilter, setOppDiasFilter] = useState<string[]>([]);
+   274→   274→  const [oppAnaliseFilter, setOppAnaliseFilter] = useState<string[]>([]);
+   275→   275→  const [oppPrazoFilter, setOppPrazoFilter] = useState<string[]>([]);
+   276→   276→  const [oppSearchTerm, setOppSearchTerm] = useState('');
+   277→   277→  const [oppOrigemFilter, setOppOrigemFilter] = useState<string[]>(SHEET_NAMES.length > 0 ? [SHEET_NAMES[0]] : []);
+   278→   278→
+   279→   279→  // Follow Up Modal State
+   280→   280→  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+   281→   281→  const [followUpRecord, setFollowUpRecord] = useState<OpportunityRecord | null>(null);
+   282→   282→  const [followUpText, setFollowUpText] = useState('');
+   283→   283→  const [applyToAllPedido, setApplyToAllPedido] = useState(false);
+   284→   284→  const [applyToAllOM, setApplyToAllOM] = useState(false);
+   285→   285→  const [deleteMode, setDeleteMode] = useState(false);
+   286→   286→
+   287→   287→  // JSON import state
+   288→   288→  const jsonFileInputRef = useRef<HTMLInputElement>(null);
+   289→   289→  const [showJsonImportModal, setShowJsonImportModal] = useState(false);
+   290→   290→  const [pendingJsonFile, setPendingJsonFile] = useState<File | null>(null);
+   291→   291→
+   292→   292→  // Available filter options
+   293→   293→  const empresas = useMemo(() => [...new Set(data.map(d => d.empresa).filter(Boolean))].sort(), [data]);
+   294→   294→  const clientes = useMemo(() => [...new Set(data.map(d => d.cliente).filter(Boolean))].sort(), [data]);
+   295→   295→  const equipamentos = useMemo(() => [...new Set(data.map(d => d.equipamento).filter(Boolean))].sort(), [data]);
+   296→   296→  const criticidades = useMemo(() => [...new Set(data.map(d => d.criticidade).filter(Boolean))].sort(), [data]);
+   297→   297→  const origens = useMemo(() => [...new Set(data.map(d => d.origemAba).filter(Boolean))].sort(), [data]);
+   298→   298→
+   299→   299→  // Memoized option arrays for FilterDropdowns
+   300→   300→  const empresaOptions = useMemo(() => empresas.map(e => ({ value: e, label: e })), [empresas]);
+   301→   301→  const clienteOptions = useMemo(() => clientes.map(c => ({ value: c, label: c })), [clientes]);
+   302→   302→  const equipamentoOptions = useMemo(() => equipamentos.map(e => ({ value: e, label: e })), [equipamentos]);
+   303→   303→  const criticidadeOptions = useMemo(() => criticidades.map(c => ({ value: c, label: c })), [criticidades]);
+   304→   304→  const statusOptions = useMemo(() => Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label })), []);
+   305→   305→  const origemOptions = useMemo(() => origens.map(o => ({ value: o, label: o.replace('PAS SVS ', '') })), [origens]);
+   306→   306→  const monthOptions = useMemo(() => MONTHS.map(m => ({ value: m.value, label: m.label })), []);
+   307→   307→  const diasOptions = useMemo(() => [
+   308→   308→    { value: '<30', label: '< 30 dias' },
+   309→   309→    { value: '30-60', label: '30-60 dias' },
+   310→   310→    { value: '>60', label: '> 60 dias' },
+   311→   311→    { value: '>90', label: '> 90 dias' },
+   312→   312→  ] as const, []);
+   313→   313→  const analiseOptions = useMemo(() => [
+   314→   314→    { value: 'completos', label: 'Completos' },
+   315→   315→    { value: 'incompletos', label: 'Incompletos' },
+   316→   316→    { value: 'com_followup', label: 'Com Follow Up' },
+   317→   317→    { value: 'sem_followup', label: 'Sem Follow Up' },
+   318→   318→  ] as const, []);
+   319→   319→  const prazoOptions = useMemo(() => [
+   320→   320→    { value: 'atrasados', label: 'Atrasados' },
+   321→   321→    { value: 'este_mes', label: 'Este Mês' },
+   322→   322→    { value: 'futuro', label: 'Futuro' },
+   323→   323→  ] as const, []);
+   324→   324→  const periodoOptions = useMemo(() => [
+   325→   325→    { value: '7d', label: 'Últimos 7 dias' },
+   326→   326→    { value: '30d', label: 'Últimos 30 dias' },
+   327→   327→    { value: '90d', label: 'Últimos 90 dias' },
+   328→   328→    { value: '2024', label: '2024' },
+   329→   329→    { value: '2025', label: '2025' },
+   330→   330→    { value: '2026', label: '2026' },
+   331→   331→  ] as const, []);
+   332→   332→  const estoqueOptions = useMemo(() => [
+   333→   333→    { value: 'lic', label: 'Com LIC' },
+   334→   334→    { value: 'betim', label: 'Com Betim' },
+   335→   335→  ] as const, []);
+   336→   336→
+   337→   337→  const availableYears = useMemo(() => {
+   338→   338→    const years = new Set<number>();
+   339→   339→    data.forEach(d => {
+   340→   340→      if (d.dataAbertura) years.add(d.dataAbertura.getFullYear());
+   341→   341→    });
+   342→   342→    return Array.from(years).sort().map(y => y.toString());
+   343→   343→  }, [data]);
+   344→   344→
+   345→   345→  const yearOptions = useMemo(() => availableYears.map(y => ({ value: y, label: y })), [availableYears]);
+   346→   346→
+   347→   347→  // Auto-select most recent year for chart
+   348→   348→  const effectiveChartYear = chartYearFilter || (availableYears.length > 0 ? availableYears[availableYears.length - 1] : '');
+   349→   349→  useEffect(() => {
+   350→   350→    if (!chartYearFilter && availableYears.length > 0) {
+   351→   351→      setChartYearFilter(availableYears[availableYears.length - 1]);
+   352→   352→    }
+   353→   353→  }, [availableYears]);
+   354→   354→
+   355→   355→  // Overview filtered data
+   356→   356→  const filteredData = useMemo(() => {
+   357→   357→    let result = data;
+   358→   358→    if (searchTerm) {
+   359→   359→      const search = searchTerm.toLowerCase();
+   360→   360→      result = result.filter(d =>
+   361→   361→        d.pn?.toLowerCase().includes(search) ||
+   362→   362→        d.partname?.toLowerCase().includes(search) ||
+   363→   363→        d.cliente?.toLowerCase().includes(search) ||
+   364→   364→        d.descricao?.toLowerCase().includes(search) ||
+   365→   365→        d.ordemManutencao?.toLowerCase().includes(search) ||
+   366→   366→        d.pedidoCompra?.toLowerCase().includes(search)
+   367→   367→      );
+   368→   368→    }
+   369→   369→    if (empresaFilter.length > 0) result = result.filter(d => empresaFilter.includes(d.empresa));
+   370→   370→    if (clienteFilter.length > 0) result = result.filter(d => clienteFilter.includes(d.cliente));
+   371→   371→    if (equipamentoFilter.length > 0) result = result.filter(d => equipamentoFilter.includes(d.equipamento));
+   372→   372→    if (criticidadeFilter.length > 0) result = result.filter(d => criticidadeFilter.includes(d.criticidade));
+   373→   373→    if (statusFilter.length > 0) result = result.filter(d => {
+   374→   374→      for (const s of statusFilter) {
+   375→   375→        if (s === 'em_aberto' && d.status !== 'vendido') return true;
+   376→   376→        if (s === 'sem_po' && (d.status === 'sem_om' || d.status === 'com_om')) return true;
+   377→   377→        if (d.status === s) return true;
+   378→   378→      }
+   379→   379→      return false;
+   380→   380→    });
+   381→   381→    if (periodFilter.length > 0) {
+   382→   382→      const now = new Date();
+   383→   383→      result = result.filter(d => {
+   384→   384→        if (!d.dataAbertura) return false;
+   385→   385→        for (const p of periodFilter) {
+   386→   386→          const filterDate = new Date();
+   387→   387→          switch (p) {
+   388→   388→            case '7d': filterDate.setDate(now.getDate() - 7); if (d.dataAbertura >= filterDate) return true; break;
+   389→   389→            case '30d': filterDate.setDate(now.getDate() - 30); if (d.dataAbertura >= filterDate) return true; break;
+   390→   390→            case '90d': filterDate.setDate(now.getDate() - 90); if (d.dataAbertura >= filterDate) return true; break;
+   391→   391→            case '2024': if (d.dataAbertura.getFullYear() === 2024) return true; break;
+   392→   392→            case '2025': if (d.dataAbertura.getFullYear() === 2025) return true; break;
+   393→   393→            case '2026': if (d.dataAbertura.getFullYear() === 2026) return true; break;
+   394→   394→          }
+   395→   395→        }
+   396→   396→        return false;
+   397→   397→      });
+   398→   398→    }
+   399→   399→    if (estoqueFilter.length > 0) {
+   400→   400→      result = result.filter(d => {
+   401→   401→        for (const e of estoqueFilter) {
+   402→   402→          if (e === 'lic' && d.lic > 0) return true;
+   403→   403→          if (e === 'betim' && d.betim > 0) return true;
+   404→   404→        }
+   405→   405→        return false;
+   406→   406→      });
+   407→   407→    }
+   408→   408→    return result;
+   409→   409→  }, [data, searchTerm, empresaFilter, clienteFilter, equipamentoFilter, criticidadeFilter, statusFilter, periodFilter, estoqueFilter]);
+   410→   410→
+   411→   411→  // Opportunities Tab filtered data
+   412→   412→  const oppFilteredData = useMemo(() => {
+   413→   413→    let result = data;
+   414→   414→    if (oppSearchTerm) {
+   415→   415→      const search = oppSearchTerm.toLowerCase();
+   416→   416→      result = result.filter(d =>
+   417→   417→        d.pn?.toLowerCase().includes(search) ||
+   418→   418→        d.partname?.toLowerCase().includes(search) ||
+   419→   419→        d.cliente?.toLowerCase().includes(search) ||
+   420→   420→        d.descricao?.toLowerCase().includes(search)
+   421→   421→      );
+   422→   422→    }
+   423→   423→    if (oppOrigemFilter.length > 0) result = result.filter(d => oppOrigemFilter.includes(d.origemAba));
+   424→   424→    // Origem filter is always required - if somehow empty, show nothing
+   425→   425→    if (oppOrigemFilter.length === 0) return [];
+   426→   426→    if (oppMonthFilter.length > 0) result = result.filter(d => d.dataAbertura && oppMonthFilter.includes(String(d.dataAbertura.getMonth() + 1)));
+   427→   427→    if (oppYearFilter.length > 0) result = result.filter(d => d.dataAbertura && oppYearFilter.includes(String(d.dataAbertura.getFullYear())));
+   428→   428→    if (oppClienteFilter.length > 0) result = result.filter(d => oppClienteFilter.includes(d.cliente));
+   429→   429→    if (oppStatusFilter.length > 0) result = result.filter(d => {
+   430→   430→      for (const s of oppStatusFilter) {
+   431→   431→        if (s === 'em_aberto' && d.status !== 'vendido') return true;
+   432→   432→        if (s === 'sem_po' && (d.status === 'sem_om' || d.status === 'com_om')) return true;
+   433→   433→        if (d.status === s) return true;
+   434→   434→      }
+   435→   435→      return false;
+   436→   436→    });
+   437→   437→    if (oppCriticidadeFilter.length > 0) result = result.filter(d => oppCriticidadeFilter.includes(d.criticidade));
+   438→   438→    if (oppDiasFilter.length > 0) {
+   439→   439→      result = result.filter(d => {
+   440→   440→        for (const f of oppDiasFilter) {
+   441→   441→          if (f === '<30' && d.diasEmAberto < 30) return true;
+   442→   442→          if (f === '30-60' && d.diasEmAberto >= 30 && d.diasEmAberto <= 60) return true;
+   443→   443→          if (f === '>60' && d.diasEmAberto > 60) return true;
+   444→   444→          if (f === '>90' && d.diasEmAberto > 90) return true;
+   445→   445→        }
+   446→   446→        return false;
+   447→   447→      });
+   448→   448→    }
+   449→   449→    if (oppAnaliseFilter.length > 0) {
+   450→   450→      result = result.filter(d => {
+   451→   451→        for (const f of oppAnaliseFilter) {
+   452→   452→          if (f === 'completos' && d.quantidadeFaturada > 0 && d.quantidadeFaturada >= d.qty) return true;
+   453→   453→          if (f === 'incompletos' && (d.quantidadeFaturada === 0 || d.quantidadeFaturada < d.qty)) return true;
+   454→   454→          if (f === 'com_followup' && (d.followUpComercial || d.followUpLocal)) return true;
+   455→   455→          if (f === 'sem_followup' && !d.followUpComercial && !d.followUpLocal) return true;
+   456→   456→        }
+   457→   457→        return false;
+   458→   458→      });
+   459→   459→    }
+   460→   460→    if (oppPrazoFilter.length > 0) {
+   461→   461→      const now = new Date();
+   462→   462→      const cm = now.getMonth();
+   463→   463→      const cy = now.getFullYear();
+   464→   464→      result = result.filter(d => {
+   465→   465→        for (const f of oppPrazoFilter) {
+   466→   466→          if (f === 'atrasados' && d.dataEntregaSolicitada && d.dataEntregaSolicitada < now && d.status !== 'vendido') return true;
+   467→   467→          if (f === 'este_mes' && d.dataEntregaSolicitada && d.dataEntregaSolicitada.getMonth() === cm && d.dataEntregaSolicitada.getFullYear() === cy) return true;
+   468→   468→          if (f === 'futuro' && d.dataEntregaSolicitada && d.dataEntregaSolicitada > now) return true;
+   469→   469→        }
+   470→   470→        return false;
+   471→   471→      });
+   472→   472→    }
+   473→   473→    return result;
+   474→   474→  }, [data, oppSearchTerm, oppMonthFilter, oppYearFilter, oppClienteFilter, oppStatusFilter, oppCriticidadeFilter, oppDiasFilter, oppAnaliseFilter, oppPrazoFilter, oppOrigemFilter]);
+   475→   475→
+   476→   476→  // Current columns based on selected origin
+   477→   477→  const currentOriginColumns = useMemo(() => {
+   478→   478→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   479→   479→    return COLUMNS_BY_ORIGIN[origin] || [];
+   480→   480→  }, [oppOrigemFilter]);
+   481→   481→
+   482→   482→  // When origin changes, reset visible columns to origin defaults (only if user hasn't customized)
+   483→   483→  useEffect(() => {
+   484→   484→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   485→   485→    const savedConfig = localStorage.getItem('dashboard_oportunidades_columns');
+   486→   486→    if (savedConfig) {
+   487→   487→      const parsed = JSON.parse(savedConfig) as { origin?: string; columns?: string[] } | string[];
+   488→   488→      // Check if saved config has origin info and matches current
+   489→   489→      if (Array.isArray(parsed)) {
+   490→   490→        // Old format without origin - reset to defaults for current origin
+   491→   491→        const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   492→   492→        setVisibleColumns(defaults);
+   493→   493→      } else if (parsed.origin === origin && parsed.columns) {
+   494→   494→        setVisibleColumns(parsed.columns);
+   495→   495→      } else {
+   496→   496→        const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   497→   497→        setVisibleColumns(defaults);
+   498→   498→      }
+   499→   499→    } else {
+   500→   500→      const defaults = DEFAULT_COLUMNS_BY_ORIGIN[origin] || [];
+   501→   501→      setVisibleColumns(defaults);
+   502→   502→    }
+   503→   503→  }, [oppOrigemFilter]);
+   504→   504→
+   505→   505→
+   506→   506→  // KPIs
+   507→   507→  const kpis = useMemo(() => {
+   508→   508→    const totalLinhas = filteredData.length;
+   509→   509→    const totalQty = filteredData.reduce((sum, d) => sum + d.qty, 0);
+   510→   510→    const totalPedidos = new Set(filteredData.filter(d => d.pedidoCompra).map(d => d.pedidoCompra)).size;
+   511→   511→    const totalOMs = new Set(filteredData.filter(d => d.ordemManutencao).map(d => d.ordemManutencao)).size;
+   512→   512→    return { totalLinhas, totalQty, totalPedidos, totalOMs };
+   513→   513→  }, [filteredData]);
+   514→   514→
+   515→   515→  // Opportunities KPIs
+   516→   516→  const oppKpis = useMemo(() => {
+   517→   517→    const totalLinhas = oppFilteredData.length;
+   518→   518→    const totalQty = oppFilteredData.reduce((sum, d) => sum + d.qty, 0);
+   519→   519→    const totalPedidos = new Set(oppFilteredData.filter(d => d.pedidoCompra).map(d => d.pedidoCompra)).size;
+   520→   520→    const totalOMs = new Set(oppFilteredData.filter(d => d.ordemManutencao).map(d => d.ordemManutencao)).size;
+   521→   521→    const linhasFiltradas = oppFilteredData.length;
+   522→   522→    const totalEmAberto = oppFilteredData.filter(d => d.status !== 'vendido' && d.status !== 'faturado_parcial').length;
+   523→   523→    const totalVendido = oppFilteredData.reduce((sum, d) => sum + d.quantidadeFaturada, 0);
+   524→   524→    const totalNF = new Set(oppFilteredData.filter(d => d.notaFiscal).map(d => d.notaFiscal)).size;
+   525→   525→    const faturadoParcial = oppFilteredData.filter(d => d.status === 'faturado_parcial').length;
+   526→   526→    return { totalLinhas, totalQty, totalPedidos, totalOMs, linhasFiltradas, totalEmAberto, totalVendido, totalNF, faturadoParcial };
+   527→   527→  }, [oppFilteredData]);
+   528→   528→
+   529→   529→  // Charts data
+   530→   530→  const clientChartData = useMemo(() => {
+   531→   531→    const clientData: Record<string, { qty: number; vendido: number }> = {};
+   532→   532→    filteredData.forEach(d => {
+   533→   533→      if (d.cliente) {
+   534→   534→        if (!clientData[d.cliente]) clientData[d.cliente] = { qty: 0, vendido: 0 };
+   535→   535→        clientData[d.cliente].qty += d.qty;
+   536→   536→        if (d.status === 'vendido') clientData[d.cliente].vendido += d.qty;
+   537→   537→      }
+   538→   538→    });
+   539→   539→    return Object.entries(clientData)
+   540→   540→      .sort((a, b) => b[1].qty - a[1].qty)
+   541→   541→      .slice(0, 10)
+   542→   542→      .map(([name, d]) => ({ name, Quantidade: d.qty, Vendido: d.vendido }));
+   543→   543→  }, [filteredData]);
+   544→   544→
+   545→   545→  const equipmentChartData = useMemo(() => {
+   546→   546→    const counts: Record<string, number> = {};
+   547→   547→    filteredData.forEach(d => { if (d.equipamento) counts[d.equipamento] = (counts[d.equipamento] || 0) + d.qty; });
+   548→   548→    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value }));
+   549→   549→  }, [filteredData]);
+   550→   550→
+   551→   551→  const criticityChartData = useMemo(() => {
+   552→   552→    const counts: Record<string, number> = { 'Baixa': 0, 'Média': 0, 'Alta': 0 };
+   553→   553→    filteredData.forEach(d => {
+   554→   554→      if (d.criticidade === 'Alta') counts['Alta']++;
+   555→   555→      else if (d.criticidade === 'Média') counts['Média']++;
+   556→   556→      else counts['Baixa']++;
+   557→   557→    });
+   558→   558→    return [
+   559→   559→      { name: 'Baixa', value: counts['Baixa'], color: CRITICITY_COLORS['Baixa'] },
+   560→   560→      { name: 'Média', value: counts['Média'], color: CRITICITY_COLORS['Média'] },
+   561→   561→      { name: 'Alta', value: counts['Alta'], color: CRITICITY_COLORS['Alta'] },
+   562→   562→    ].filter(d => d.value > 0);
+   563→   563→  }, [filteredData]);
+   564→   564→
+   565→   565→  const statusChartData = useMemo(() => {
+   566→   566→    const counts: Record<string, number> = {};
+   567→   567→    filteredData.forEach(d => { counts[d.status] = (counts[d.status] || 0) + 1; });
+   568→   568→    return Object.entries(counts).map(([name, value]) => ({ name: STATUS_CONFIG[name]?.label || name, value }));
+   569→   569→  }, [filteredData]);
+   570→   570→
+   571→   571→  const monthlyChartData = useMemo(() => {
+   572→   572→    const monthCounts: Record<string, number> = {};
+   573→   573→    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+   574→   574→    filteredData.forEach(d => {
+   575→   575→      if (d.dataAbertura) {
+   576→   576→        if (effectiveChartYear && d.dataAbertura.getFullYear() !== parseInt(effectiveChartYear)) return;
+   577→   577→        const key = `${monthNames[d.dataAbertura.getMonth()]}/${d.dataAbertura.getFullYear()}`;
+   578→   578→        monthCounts[key] = (monthCounts[key] || 0) + d.qty;
+   579→   579→      }
+   580→   580→    });
+   581→   581→    return Object.entries(monthCounts)
+   582→   582→      .sort((a, b) => {
+   583→   583→        const [aM, aY] = a[0].split('/');
+   584→   584→        const [bM, bY] = b[0].split('/');
+   585→   585→        return (parseInt(aY) * 12 + monthNames.indexOf(aM)) - (parseInt(bY) * 12 + monthNames.indexOf(bM));
+   586→   586→      })
+   587→   587→      .map(([name, value]) => ({ name, value }));
+   588→   588→  }, [filteredData, effectiveChartYear]);
+   589→   589→
+   590→   590→  const origemChartData = useMemo(() => {
+   591→   591→    const counts: Record<string, number> = {};
+   592→   592→    data.forEach(d => {
+   593→   593→      if (d.origemAba) { const label = d.origemAba.replace('PAS SVS ', ''); counts[label] = (counts[label] || 0) + 1; }
+   594→   594→    });
+   595→   595→    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+   596→   596→  }, [data]);
+   597→   597→
+   598→   598→  // Ranking data - only by equipamento (column D)
+   599→   599→  const rankingData = useMemo(() => {
+   600→   600→    const items: Record<string, { inspecao: number; venda: number }> = {};
+   601→   601→    filteredData.forEach(d => {
+   602→   602→      if (!d.equipamento) return;
+   603→   603→      const name = d.equipamento;
+   604→   604→      if (!items[name]) items[name] = { inspecao: 0, venda: 0 };
+   605→   605→      items[name].inspecao += d.qty;
+   606→   606→      items[name].venda += d.quantidadeFaturada;
+   607→   607→    });
+   608→   608→    return Object.entries(items)
+   609→   609→      .sort((a, b) => b[1][rankingType] - a[1][rankingType])
+   610→   610→      .map(([name, counts], i) => ({ position: i + 1, name, inspecao: counts.inspecao, venda: counts.venda }));
+   611→   611→  }, [filteredData, rankingType]);
+   612→   612→
+   613→   613→  // File handling
+   614→   614→  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+   615→   615→    const file = event.target.files?.[0];
+   616→   616→    if (!file) return;
+   617→   617→    setPendingFile(file);
+   618→   618→    setShowPasswordModal(true);
+   619→   619→    if (fileInputRef.current) fileInputRef.current.value = '';
+   620→   620→  };
+   621→   621→
+   622→   622→  const handleImportConfirmed = async () => {
+   623→   623→    if (!pendingFile) return;
+   624→   624→    setIsLoading(true);
+   625→   625→    try {
+   626→   626→      const fileData = await pendingFile.arrayBuffer();
+   627→   627→      const workbook = XLSX.read(fileData);
+   628→   628→      const allParsedData: OpportunityRecord[] = [];
+   629→   629→      let globalId = 1;
+   630→   630→
+   631→   631→      for (const sheetName of SHEET_NAMES) {
+   632→   632→        const actualSheetName = workbook.SheetNames.find(n => n.toLowerCase() === sheetName.toLowerCase());
+   633→   633→        if (!actualSheetName) { console.warn(`Aba "${sheetName}" não encontrada`); continue; }
+   634→   634→        const worksheet = workbook.Sheets[actualSheetName];
+   635→   635→        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+   636→   636→        if (jsonData.length < 2) continue;
+   637→   637→        const headers = jsonData[0] as string[];
+   638→   638→        const columnIndices: Record<string, number> = {};
+   639→   639→        headers.forEach((header, index) => {
+   640→   640→          const mappedKey = COLUMN_MAP[header?.toString().trim()];
+   641→   641→          if (mappedKey) columnIndices[mappedKey] = index;
+   642→   642→        });
+   643→   643→
+   644→   644→        for (let i = 1; i < jsonData.length; i++) {
+   645→   645→          const row = jsonData[i] as unknown[];
+   646→   646→          if (!row || row.length === 0) continue;
+   647→   647→          const getValue = (key: string): unknown => { const idx = columnIndices[key]; return idx !== undefined ? row[idx] : undefined; };
+   648→   648→          const empresa = String(getValue('empresa') || '').trim();
+   649→   649→          const cliente = String(getValue('cliente') || '').trim();
+   650→   650→          const qty = parseNumber(getValue('qty'));
+   651→   651→          const lic = parseNumber(getValue('lic'));
+   652→   652→          const betim = parseNumber(getValue('betim'));
+   653→   653→          const criticidade = parseCriticidade(String(getValue('criticidade') || 'Baixa'));
+   654→   654→          const dataAbertura = parseDate(getValue('dataAbertura'));
+   655→   655→          const dataVenda = parseDate(getValue('dataVenda'));
+   656→   656→          const notaFiscal = String(getValue('notaFiscal') || getValue('numeroNF') || '').trim();
+   657→   657→          const pedidoCompra = String(getValue('pedidoCompra') || '').trim();
+   658→   658→          const previsaoChegada = parseDate(getValue('previsaoChegada'));
+   659→   659→          const ordemManutencao = String(getValue('ordemManutencao') || '').trim();
+   660→   660→          const quantidadePedida = parseNumber(getValue('quantidadePedida'));
+   661→   661→          const quantidadeFaturada = parseNumber(getValue('quantidadeFaturada'));
+   662→   662→          const status = determineStatus(notaFiscal, dataVenda, pedidoCompra, ordemManutencao, quantidadeFaturada, quantidadePedida, qty);
+   663→   663→          const diasEmAberto = dataAbertura ? Math.floor((Date.now() - dataAbertura.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+   664→   664→          const diasParaEntrega = previsaoChegada ? Math.floor((previsaoChegada.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+   665→   665→
+   666→   666→          const record: OpportunityRecord = {
+   667→   667→            id: globalId++, origemAba: sheetName, empresa, cliente,
+   668→   668→            descricao: String(getValue('descricao') || '').trim(),
+   669→   669→            equipamento: String(getValue('equipamento') || '').trim(),
+   670→   670→            dataAbertura, mes: String(getValue('mes') || '').trim(),
+   671→   671→            pn: String(getValue('pn') || '').trim(),
+   672→   672→            partname: String(getValue('partname') || '').trim(),
+   673→   673→            qty, criticidade, betim, lic,
+   674→   674→            emEstoque: String(getValue('emEstoque') || '').trim(),
+   675→   675→            importacao: parseNumber(getValue('importacao')),
+   676→   676→            dataTroca: parseDate(getValue('dataTroca')),
+   677→   677→            dataAberturaOM: parseDate(getValue('dataAberturaOM')),
+   678→   678→            ordemManutencao, pedidoCompra,
+   679→   679→            requisicaoCompra: String(getValue('requisicaoCompra') || '').trim(),
+   680→   680→            previsaoChegada, notaFiscal, dataVenda,
+   681→   681→            followUpComercial: String(getValue('followUpComercial') || '').trim(),
+   682→   682→            followUpLocal: '', dataFollowUp: null,
+   683→   683→            vinculoPasSvs: String(getValue('vinculoPasSvs') || '').trim(),
+   684→   684→            numeroPedido: String(getValue('numeroPedido') || '').trim(),
+   685→   685→            dataRecebimentoPedido: parseDate(getValue('dataRecebimentoPedido')),
+   686→   686→            tipoPedido: String(getValue('tipoPedido') || '').trim(),
+   687→   687→            dataEntregaSolicitada: parseDate(getValue('dataEntregaSolicitada')),
+   688→   688→            partNumber: String(getValue('partNumber') || '').trim(),
+   689→   689→            replace: String(getValue('replace') || '').trim(),
+   690→   690→            descricao1: String(getValue('descricao1') || '').trim(),
+   691→   691→            quantidadePedida,
+   692→   692→            disponibilidade: String(getValue('disponibilidade') || '').trim(),
+   693→   693→            quantidadeFaturada,
+   694→   694→            numeroCigam: String(getValue('numeroCigam') || '').trim(),
+   695→   695→            numeroProcessoImportacao: String(getValue('numeroProcessoImportacao') || '').trim(),
+   696→   696→            numeroNF: String(getValue('numeroNF') || '').trim(),
+   697→   697→            dataEmissaoNF: parseDate(getValue('dataEmissaoNF')),
+   698→   698→            observacao: String(getValue('observacao') || '').trim(),
+   699→   699→            cliente1: String(getValue('cliente1') || '').trim(),
+   700→   700→            quantidadeEmEstoque: parseNumber(getValue('quantidadeEmEstoque')),
+   701→   701→            dataDisponibilidade: parseDate(getValue('dataDisponibilidade')),
+   702→   702→            quantidadeAFaturar: parseNumber(getValue('quantidadeAFaturar')),
+   703→   703→            status, diasEmAberto, diasParaEntrega,
+   704→   704→            estoqueDisponivel: lic + betim,
+   705→   705→          };
+   706→   706→          if (empresa || cliente || record.pn) allParsedData.push(record);
+   707→   707→        }
+   708→   708→      }
+   709→   709→      allParsedData.sort((a, b) => (b.dataAbertura?.getTime() || 0) - (a.dataAbertura?.getTime() || 0));
+   710→   710→      setData(allParsedData);
+   711→   711→      setPendingFile(null);
+   712→   712→      alert(`Importação concluída! ${allParsedData.length} registros carregados de ${SHEET_NAMES.filter(s => workbook.SheetNames.some(n => n.toLowerCase() === s.toLowerCase())).length} abas.`);
+   713→   713→    } catch (error) {
+   714→   714→      console.error('Erro ao importar:', error);
+   715→   715→      alert('Erro ao importar arquivo! Verifique o formato.');
+   716→   716→    } finally { setIsLoading(false); }
+   717→   717→  };
+   718→   718→
+   719→   719→  const exportToExcel = (tipo: 'completo' | 'servicos') => {
+   720→   720→    if (data.length === 0) return;
+   721→   721→    const wb = XLSX.utils.book_new();
+   722→   722→    const dataByOrigin: Record<string, OpportunityRecord[]> = {};
+   723→   723→    data.forEach(d => { if (!dataByOrigin[d.origemAba]) dataByOrigin[d.origemAba] = []; dataByOrigin[d.origemAba].push(d); });
+   724→   724→
+   725→   725→    SHEET_NAMES.forEach(sheetName => {
+   726→   726→      const sheetData = dataByOrigin[sheetName] || [];
+   727→   727→      let exportData: Record<string, unknown>[];
+   728→   728→      if (tipo === 'servicos') {
+   729→   729→        exportData = sheetData.map(d => ({
+   730→   730→          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+   731→   731→          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+   732→   732→          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+   733→   733→          'CRITICIDADE': d.criticidade, 'EM ESTOQUE': d.emEstoque,
+   734→   734→          'Data de troca': formatDateBR(d.dataTroca),
+   735→   735→          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+   736→   736→          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+   737→   737→          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+   738→   738→          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+   739→   739→          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+   740→   740→          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
+   741→   741→        }));
+   742→   742→      } else {
+   743→   743→        exportData = sheetData.map(d => ({
+   744→   744→          'Empresa': d.empresa, 'Cliente': d.cliente, 'DESCRIÇÃO': d.descricao,
+   745→   745→          'EQUIPAMENTO': d.equipamento, 'DATA ABERTURA': formatDateBR(d.dataAbertura),
+   746→   746→          'Mês': d.mes, 'PN': d.pn, 'Partname': d.partname, 'QTY': d.qty,
+   747→   747→          'Quantidade Inspeção': d.qty, 'Quantidade pedida': d.quantidadePedida,
+   748→   748→          'CRITICIDADE': d.criticidade, 'Betim': d.betim, 'LIC': d.lic,
+   749→   749→          'EM ESTOQUE': d.emEstoque, 'Importação': d.importacao,
+   750→   750→          'Data de troca': formatDateBR(d.dataTroca),
+   751→   751→          'Data Abertura OM': formatDateBR(d.dataAberturaOM),
+   752→   752→          'ORDEM DE MANUTENÇÃO': d.ordemManutencao, 'PEDIDO DE COMPRA': d.pedidoCompra,
+   753→   753→          'REQUISIÇÃO DE COMPRA': d.requisicaoCompra,
+   754→   754→          'PREVISÃO DE CHEGADA': formatDateBR(d.previsaoChegada),
+   755→   755→          'NOTA FISCAL': d.notaFiscal, 'DAT.Venda': formatDateBR(d.dataVenda),
+   756→   756→          'Follow Up/comercial': d.followUpComercial, 'Follow Up Local': d.followUpLocal,
+   757→   757→          'Data Follow Up': formatDateBR(d.dataFollowUp),
+   758→   758→          'VÍNCULO PAS SVS': d.vinculoPasSvs, 'Número do pedido': d.numeroPedido,
+   759→   759→          'Data de recebimento do pedido': formatDateBR(d.dataRecebimentoPedido),
+   760→   760→          'Tipo do pedido': d.tipoPedido,
+   761→   761→          'Data de entrega solicitada': formatDateBR(d.dataEntregaSolicitada),
+   762→   762→          'Part number': d.partNumber, 'Replace': d.replace, 'Descrição.1': d.descricao1,
+   763→   763→          'Disponibilidade': d.disponibilidade, 'Quantidade faturada': d.quantidadeFaturada,
+   764→   764→          'Número do CIGAM': d.numeroCigam,
+   765→   765→          'Número do processo importação': d.numeroProcessoImportacao,
+   766→   766→          'Número da NF': d.numeroNF, 'Data de emissão da NF': formatDateBR(d.dataEmissaoNF),
+   767→   767→          'Observação': d.observacao,
+   768→   768→        }));
+   769→   769→      }
+   770→   770→      const ws = XLSX.utils.json_to_sheet(exportData);
+   771→   771→      const exportSheetName = tipo === 'servicos' ? (SHEET_DISPLAY_NAMES[sheetName] || sheetName) : sheetName;
+   772→   772→      XLSX.utils.book_append_sheet(wb, ws, exportSheetName);
+   773→   773→    });
+   774→   774→    const suffix = tipo === 'servicos' ? '_servicos' : '_completo';
+   775→   775→    XLSX.writeFile(wb, `oportunidades_export${suffix}_${new Date().toISOString().split('T')[0]}.xlsx`);
+   776→   776→  };
+   777→   777→
+   778→   778→  const exportToJSON = () => {
+   779→   779→    if (data.length === 0) { alert('Nenhum dado para exportar!'); return; }
+   780→   780→    const exportData = {
+   781→   781→      exportDate: new Date().toISOString(),
+   782→   782→      totalRecords: data.length,
+   783→   783→      data: data.map(d => ({
+   784→   784→        ...d,
+   785→   785→        dataAbertura: d.dataAbertura?.toISOString() || null,
+   786→   786→        dataTroca: d.dataTroca?.toISOString() || null,
+   787→   787→        dataAberturaOM: d.dataAberturaOM?.toISOString() || null,
+   788→   788→        previsaoChegada: d.previsaoChegada?.toISOString() || null,
+   789→   789→        dataVenda: d.dataVenda?.toISOString() || null,
+   790→   790→        dataFollowUp: d.dataFollowUp?.toISOString() || null,
+   791→   791→        dataRecebimentoPedido: d.dataRecebimentoPedido?.toISOString() || null,
+   792→   792→        dataEntregaSolicitada: d.dataEntregaSolicitada?.toISOString() || null,
+   793→   793→        dataEmissaoNF: d.dataEmissaoNF?.toISOString() || null,
+   794→   794→      }))
+   795→   795→    };
+   796→   796→    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+   797→   797→    const url = URL.createObjectURL(blob);
+   798→   798→    const a = document.createElement('a');
+   799→   799→    a.href = url;
+   800→   800→    a.download = `dashboard_oportunidades_${new Date().toISOString().split('T')[0]}.json`;
+   801→   801→    document.body.appendChild(a);
+   802→   802→    a.click();
+   803→   803→    document.body.removeChild(a);
+   804→   804→    URL.revokeObjectURL(url);
+   805→   805→  };
+   806→   806→
+   807→   807→  const handleJsonFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+   808→   808→    const file = event.target.files?.[0];
+   809→   809→    if (!file) return;
+   810→   810→    setPendingJsonFile(file);
+   811→   811→    setShowJsonImportModal(true);
+   812→   812→    if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
+   813→   813→  };
+   814→   814→
+   815→   815→  const handleJsonImportConfirmed = async () => {
+   816→   816→    if (!pendingJsonFile) return;
+   817→   817→    setIsLoading(true);
+   818→   818→    try {
+   819→   819→      const text = await pendingJsonFile.text();
+   820→   820→      const jsonData = JSON.parse(text);
+   821→   821→      if (!jsonData.data || !Array.isArray(jsonData.data)) throw new Error('Formato inválido');
+   822→   822→      const parsedData: OpportunityRecord[] = jsonData.data.map((d: Record<string, unknown>, index: number) => ({
+   823→   823→        id: index + 1,
+   824→   824→        origemAba: String(d.origemAba || ''), empresa: String(d.empresa || ''),
+   825→   825→        cliente: String(d.cliente || ''), descricao: String(d.descricao || ''),
+   826→   826→        equipamento: String(d.equipamento || ''),
+   827→   827→        dataAbertura: d.dataAbertura ? new Date(d.dataAbertura as string) : null,
+   828→   828→        mes: String(d.mes || ''), pn: String(d.pn || ''),
+   829→   829→        partname: String(d.partname || ''), qty: Number(d.qty) || 0,
+   830→   830→        criticidade: String(d.criticidade || 'Baixa'),
+   831→   831→        betim: Number(d.betim) || 0, lic: Number(d.lic) || 0,
+   832→   832→        emEstoque: String(d.emEstoque || ''), importacao: Number(d.importacao) || 0,
+   833→   833→        dataTroca: d.dataTroca ? new Date(d.dataTroca as string) : null,
+   834→   834→        dataAberturaOM: d.dataAberturaOM ? new Date(d.dataAberturaOM as string) : null,
+   835→   835→        ordemManutencao: String(d.ordemManutencao || ''),
+   836→   836→        pedidoCompra: String(d.pedidoCompra || ''),
+   837→   837→        requisicaoCompra: String(d.requisicaoCompra || ''),
+   838→   838→        previsaoChegada: d.previsaoChegada ? new Date(d.previsaoChegada as string) : null,
+   839→   839→        notaFiscal: String(d.notaFiscal || ''),
+   840→   840→        dataVenda: d.dataVenda ? new Date(d.dataVenda as string) : null,
+   841→   841→        followUpComercial: String(d.followUpComercial || ''),
+   842→   842→        followUpLocal: String(d.followUpLocal || ''),
+   843→   843→        dataFollowUp: d.dataFollowUp ? new Date(d.dataFollowUp as string) : null,
+   844→   844→        vinculoPasSvs: String(d.vinculoPasSvs || ''),
+   845→   845→        numeroPedido: String(d.numeroPedido || ''),
+   846→   846→        dataRecebimentoPedido: d.dataRecebimentoPedido ? new Date(d.dataRecebimentoPedido as string) : null,
+   847→   847→        tipoPedido: String(d.tipoPedido || ''),
+   848→   848→        dataEntregaSolicitada: d.dataEntregaSolicitada ? new Date(d.dataEntregaSolicitada as string) : null,
+   849→   849→        partNumber: String(d.partNumber || ''), replace: String(d.replace || ''),
+   850→   850→        descricao1: String(d.descricao1 || ''),
+   851→   851→        quantidadePedida: Number(d.quantidadePedida) || 0,
+   852→   852→        disponibilidade: String(d.disponibilidade || ''),
+   853→   853→        quantidadeFaturada: Number(d.quantidadeFaturada) || 0,
+   854→   854→        numeroCigam: String(d.numeroCigam || ''),
+   855→   855→        numeroProcessoImportacao: String(d.numeroProcessoImportacao || ''),
+   856→   856→        numeroNF: String(d.numeroNF || ''),
+   857→   857→        dataEmissaoNF: d.dataEmissaoNF ? new Date(d.dataEmissaoNF as string) : null,
+   858→   858→        observacao: String(d.observacao || ''),
+   859→   859→        cliente1: String(d.cliente1 || ''),
+   860→   860→        quantidadeEmEstoque: Number(d.quantidadeEmEstoque) || 0,
+   861→   861→        dataDisponibilidade: d.dataDisponibilidade ? new Date(d.dataDisponibilidade as string) : null,
+   862→   862→        quantidadeAFaturar: Number(d.quantidadeAFaturar) || 0,
+   863→   863→        status: (d.status as OpportunityRecord['status']) || 'sem_om',
+   864→   864→        diasEmAberto: Number(d.diasEmAberto) || 0,
+   865→   865→        diasParaEntrega: d.diasParaEntrega ? Number(d.diasParaEntrega) : null,
+   866→   866→        estoqueDisponivel: Number(d.estoqueDisponivel) || 0,
+   867→   867→      }));
+   868→   868→      setData(parsedData);
+   869→   869→      setShowJsonImportModal(false);
+   870→   870→      setPendingJsonFile(null);
+   871→   871→      alert(`Importação JSON concluída! ${parsedData.length} registros carregados.`);
+   872→   872→    } catch (error) {
+   873→   873→      console.error('Erro ao importar JSON:', error);
+   874→   874→      alert('Erro ao importar arquivo JSON! Verifique o formato.');
+   875→   875→    } finally { setIsLoading(false); }
+   876→   876→  };
+   877→   877→
+   878→   878→  const clearFilters = () => {
+   879→   879→    setEmpresaFilter([]); setClienteFilter([]); setEquipamentoFilter([]);
+   880→   880→    setCriticidadeFilter([]); setStatusFilter([]); setPeriodFilter([]);
+   881→   881→    setSearchTerm(''); setEstoqueFilter([]);
+   882→   882→  };
+   883→   883→  const clearOppFilters = () => {
+   884→   884→    setOppMonthFilter([]); setOppYearFilter([]); setOppClienteFilter([]);
+   885→   885→    setOppStatusFilter([]); setOppCriticidadeFilter([]); setOppDiasFilter([]);
+   886→   886→    setOppAnaliseFilter([]); setOppPrazoFilter([]); setOppSearchTerm('');
+   887→   887→  };
+   888→   888→  const openFollowUpModal = (record: OpportunityRecord) => {
+   889→   889→    setFollowUpRecord(record);
+   890→   890→    setFollowUpText(record.followUpLocal || record.followUpComercial || '');
+   891→   891→    setApplyToAllPedido(false);
+   892→   892→    setApplyToAllOM(false);
+   893→   893→    setDeleteMode(false);
+   894→   894→    setShowFollowUpModal(true);
+   895→   895→  };
+   896→   896→  const saveFollowUp = () => {
+   897→   897→    if (!followUpRecord) return;
+   898→   898→
+   899→   899→    const now = new Date();
+   900→   900→
+   901→   901→    // Modo de exclusão
+   902→   902→    if (deleteMode) {
+   903→   903→      setData(prevData => {
+   904→   904→        const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
+   905→   905→        const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
+   906→   906→
+   907→   907→        return prevData.map(d => {
+   908→   908→          // Aplicar a todos do pedido, OM ou apenas este item
+   909→   909→          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
+   910→   910→              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
+   911→   911→              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
+   912→   912→            return { ...d, followUpLocal: '', dataFollowUp: null };
+   913→   913→          }
+   914→   914→          return d;
+   915→   915→        });
+   916→   916→      });
+   917→   917→    }
+   918→   918→    // Modo de salvamento
+   919→   919→    else if (followUpText.trim()) {
+   920→   920→      const applyToPedido = applyToAllPedido && followUpRecord.pedidoCompra;
+   921→   921→      const applyToOM = applyToAllOM && followUpRecord.ordemManutencao;
+   922→   922→
+   923→   923→      setData(prevData => {
+   924→   924→        return prevData.map(d => {
+   925→   925→          if ((applyToPedido && d.pedidoCompra === followUpRecord.pedidoCompra) ||
+   926→   926→              (applyToOM && d.ordemManutencao === followUpRecord.ordemManutencao) ||
+   927→   927→              (!applyToPedido && !applyToOM && d.id === followUpRecord.id)) {
+   928→   928→            return { ...d, followUpLocal: followUpText, dataFollowUp: now };
+   929→   929→          }
+   930→   930→          return d;
+   931→   931→        });
+   932→   932→      });
+   933→   933→    }
+   934→   934→
+   935→   935→    setShowFollowUpModal(false);
+   936→   936→    setFollowUpRecord(null);
+   937→   937→    setFollowUpText('');
+   938→   938→    setApplyToAllPedido(false);
+   939→   939→    setApplyToAllOM(false);
+   940→   940→    setDeleteMode(false);
+   941→   941→  };
+   942→   942→
+   943→   943→  const startDeleteMode = () => {
+   944→   944→    setDeleteMode(true);
+   945→   945→  };
+   946→   946→
+   947→   947→  // Column configuration handlers
+   948→   948→  const handleSaveColumnConfig = () => {
+   949→   949→    // Only keep columns that belong to current origin
+   950→   950→    const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   951→   951→    const originKeys = (COLUMNS_BY_ORIGIN[origin] || []).map(c => c.key);
+   952→   952→    const filtered = tempVisibleColumns.filter(c => originKeys.includes(c));
+   953→   953→    setVisibleColumns(filtered);
+   954→   954→    localStorage.setItem('dashboard_oportunidades_columns', JSON.stringify({ origin, columns: filtered }));
+   955→   955→    setShowColumnConfigModal(false);
+   956→   956→  };
+   957→   957→
+   958→   958→  useEffect(() => {
+   959→   959→    if (showColumnConfigModal) {
+   960→   960→      // Only include columns that belong to current origin
+   961→   961→      const origin = oppOrigemFilter.length > 0 ? oppOrigemFilter[0] : SHEET_NAMES[0];
+   962→   962→      const originKeys = (COLUMNS_BY_ORIGIN[origin] || []).map(c => c.key);
+   963→   963→      setTempVisibleColumns(visibleColumns.filter(c => originKeys.includes(c)));
+   964→   964→    }
+   965→   965→  }, [showColumnConfigModal, visibleColumns, oppOrigemFilter]);
+   966→   966→
+   967→   967→  const handleDragEnd = (event: DragEndEvent) => {
+   968→   968→    const { active, over } = event;
+   969→   969→    if (over && active.id !== over.id) {
+   970→   970→      setTempVisibleColumns((items) => {
+   971→   971→        const oldIndex = items.indexOf(active.id as string);
+   972→   972→        const newIndex = items.indexOf(over.id as string);
+   973→   973→        return arrayMove(items, oldIndex, newIndex);
+   974→   974→      });
+   975→   975→    }
+   976→   976→  };
+   977→   977→
+   978→   978→  const handleAddColumn = (key: string) => setTempVisibleColumns([...tempVisibleColumns, key]);
+   979→   979→  const handleRemoveColumn = (key: string) => setTempVisibleColumns(tempVisibleColumns.filter(c => c !== key));
+   980→   980→  const handleSelectAll = () => setTempVisibleColumns(currentOriginColumns.map(c => c.key));
+   981→   981→  const handleClearAll = () => setTempVisibleColumns([]);
+   982→   982→
+   983→   983→  // Helper to render table cells
+   984→   984→  const renderTableCell = (record: OpportunityRecord, columnKey: string) => {
+   985→   985→    switch (columnKey) {
+   986→   986→      case 'id':
+   987→   987→        return <TableCell className="text-xs text-slate-600">{record.id}</TableCell>;
+   988→   988→      case 'origemAba':
+   989→   989→        return <TableCell className="text-xs text-slate-600">{SHEET_DISPLAY_NAMES[record.origemAba] || record.origemAba}</TableCell>;
+   990→   990→      case 'criticidade':
+   991→   991→        return (
+   992→   992→          <TableCell className="text-xs">
+   993→   993→            <Badge style={{ backgroundColor: CRITICITY_COLORS[record.criticidade] || '#6c757d', color: 'white' }}>
+   994→   994→              {record.criticidade}
+   995→   995→            </Badge>
+   996→   996→          </TableCell>
+   997→   997→        );
+   998→   998→      case 'estoque':
+   999→   999→        return <TableCell className="text-xs"><AnaliseEstoqueBadge record={record} /></TableCell>;
+  1000→  1000→      case 'status':
+  1001→  1001→        return (
+  1002→  1002→          <TableCell className="text-xs">
+  1003→  1003→            <Badge style={{ backgroundColor: STATUS_CONFIG[record.status]?.color || '#6c757d', color: 'white' }}>
+  1004→  1004→              {STATUS_CONFIG[record.status]?.label || record.status}
+  1005→  1005→            </Badge>
+  1006→  1006→          </TableCell>
+  1007→  1007→        );
+  1008→  1008→      case 'followUp':
+  1009→  1009→        return (
+  1010→  1010→          <TableCell className="text-xs">
+  1011→  1011→            <Button
+  1012→  1012→              variant="ghost"
+  1013→  1013→              size="sm"
+  1014→  1014→              className="h-7 w-7 p-0"
+  1015→  1015→              onClick={() => openFollowUpModal(record)}
+  1016→  1016→              title={record.followUpLocal || record.followUpComercial || 'Adicionar Follow Up'}
+  1017→  1017→            >
+  1018→  1018→              <MessageCircle className="h-3.5 w-3.5" style={{ color: (record.followUpLocal || record.followUpComercial) ? '#FF6600' : '#94a3b8' }} />
+  1019→  1019→            </Button>
+  1020→  1020→          </TableCell>
+  1021→  1021→        );
+  1022→  1022→      case 'dataAbertura':
+  1023→  1023→      case 'dataTroca':
+  1024→  1024→      case 'dataAberturaOM':
+  1025→  1025→      case 'dataVenda':
+  1026→  1026→      case 'dataEmissaoNF':
+  1027→  1027→      case 'dataEntregaSolicitada':
+  1028→  1028→      case 'dataDisponibilidade':
+  1029→  1029→      case 'dataFollowUp':
+  1030→  1030→      case 'dataRecebimentoPedido':
+  1031→  1031→        return <TableCell className="text-xs text-slate-600">{formatDateBR(record[columnKey as keyof OpportunityRecord] as Date | null)}</TableCell>;
+  1032→  1032→      case 'previsaoChegada':
+  1033→  1033→        if (record.status === 'vendido') {
+  1034→  1034→          return <TableCell className="text-xs text-slate-400">-</TableCell>;
+  1035→  1035→        }
+  1036→  1036→        return <TableCell className="text-xs text-slate-600">{formatDateBR(record.previsaoChegada)}</TableCell>;
+  1037→  1037→      default:
+  1038→  1038→        const value = record[columnKey as keyof OpportunityRecord];
+  1039→  1039→        return <TableCell className="text-xs text-slate-600">{String(value || '-')}</TableCell>;
+  1040→  1040→    }
+  1041→  1041→  };
+  1042→  1042→
+  1043→  1043→  return (
+  1044→  1044→    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+  1045→  1045→      {/* Header */}
+  1046→  1046→      <header className="bg-white border-b-4 border-slate-400 shadow-sm sticky top-0 z-50">
+  1047→  1047→        <div className="w-full px-6 py-3 flex items-center justify-between flex-wrap gap-3">
+  1048→  1048→          <div className="flex items-center gap-4">
+  1049→  1049→            <div className="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center shrink-0">
+  1050→  1050→              <Target className="h-6 w-6 text-slate-600" />
+  1051→  1051→            </div>
+  1052→  1052→            <div>
+  1053→  1053→              <h1 className="text-xl font-bold text-slate-700">Dashboard de Oportunidades</h1>
+  1054→  1054→              <div className="flex items-center gap-2 text-xs text-slate-400">
+  1055→  1055→                {isSyncing && (
+  1056→  1056→                  <><div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div><span>Sincronizando...</span></>
+  1057→  1057→                )}
+  1058→  1058→                {!isSyncing && lastSync && (
+  1059→  1059→                  <>Última sinc: <span className="text-slate-600">{lastSync}</span></>
+  1060→  1060→                )}
+  1061→  1061→                {!isSyncing && !lastSync && (
+  1062→  1062→                  <span>Aguardando dados...</span>
+  1063→  1063→                )}
+  1064→  1064→              </div>
+  1065→  1065→            </div>
+  1066→  1066→          </div>
+  1067→  1067→
+  1068→  1068→          <div className="flex items-center gap-2 flex-wrap">
+  1069→  1069→            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { jsonFileInputRef.current?.click(); }} disabled={isLoading}>
+  1070→  1070→              <FileJson className="h-4 w-4" />
+  1071→  1071→              Importar JSON
+  1072→  1072→            </Button>
+  1073→  1073→            <input
+  1074→  1074→              ref={jsonFileInputRef}
+  1075→  1075→              type="file"
+  1076→  1076→              accept=".json"
+  1077→  1077→              className="hidden"
+  1078→  1078→              onChange={handleJsonFileSelect}
+  1079→  1079→            />
+  1080→  1080→            <DropdownMenu>
+  1081→  1081→              <DropdownMenuTrigger asChild>
+  1082→  1082→                <Button size="sm" className="gap-1.5" style={{ backgroundColor: '#FF6600', color: 'white' }}>
+  1083→  1083→                  <Upload className="h-4 w-4" />
+  1084→  1084→                  Importar Excel
+  1085→  1085→                </Button>
+  1086→  1086→              </DropdownMenuTrigger>
+  1087→  1087→              <DropdownMenuContent align="end">
+  1088→  1088→                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+  1089→  1089→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Nova Importação
+  1090→  1090→                </DropdownMenuItem>
+  1091→  1091→                <DropdownMenuItem onClick={loadData}>
+  1092→  1092→                  <RefreshCw className="h-4 w-4 mr-2" /> Recarregar do Servidor
+  1093→  1093→                </DropdownMenuItem>
+  1094→  1094→              </DropdownMenuContent>
+  1095→  1095→            </DropdownMenu>
+  1096→  1096→            <input
+  1097→  1097→              ref={fileInputRef}
+  1098→  1098→              type="file"
+  1099→  1099→              accept=".xlsx,.xls,.csv"
+  1100→  1100→              className="hidden"
+  1101→  1101→              onChange={handleFileSelect}
+  1102→  1102→            />
+  1103→  1103→            <DropdownMenu>
+  1104→  1104→              <DropdownMenuTrigger asChild>
+  1105→  1105→                <Button size="sm" variant="outline" className="gap-1.5">
+  1106→  1106→                  <Download className="h-4 w-4" />
+  1107→  1107→                  Exportar
+  1108→  1108→                </Button>
+  1109→  1109→              </DropdownMenuTrigger>
+  1110→  1110→              <DropdownMenuContent align="end">
+  1111→  1111→                <DropdownMenuItem onClick={() => exportToExcel('completo')}>
+  1112→  1112→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Exportar Completo
+  1113→  1113→                </DropdownMenuItem>
+  1114→  1114→                <DropdownMenuItem onClick={() => exportToExcel('servicos')}>
+  1115→  1115→                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Exportar Serviços
+  1116→  1116→                </DropdownMenuItem>
+  1117→  1117→                <DropdownMenuItem onClick={exportToJSON}>
+  1118→  1118→                  <FileJson className="h-4 w-4 mr-2" /> Exportar JSON
+  1119→  1119→                </DropdownMenuItem>
+  1120→  1120→              </DropdownMenuContent>
+  1121→  1121→            </DropdownMenu>
+  1122→  1122→          </div>
+  1123→  1123→        </div>
+  1124→  1124→      </header>
+  1125→  1125→
+  1126→  1126→      {/* Main Content */}
+  1127→  1127→      <main className="flex-1 w-full px-4 py-6 overflow-x-hidden">
+  1128→  1128→        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+  1129→  1129→          <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+  1130→  1130→            <TabsList className="bg-white/80 backdrop-blur-sm border border-slate-200">
+  1131→  1131→              <TabsTrigger value="overview" className="gap-2">
+  1132→  1132→                <BarChart3 className="h-4 w-4" />
+  1133→  1133→                Visão Geral
+  1134→  1134→              </TabsTrigger>
+  1135→  1135→              <TabsTrigger value="opportunities" className="gap-2">
+  1136→  1136→                <ShoppingCart className="h-4 w-4" />
+  1137→  1137→                Oportunidades
+  1138→  1138→              </TabsTrigger>
+  1139→  1139→              <TabsTrigger value="ranking" className="gap-2">
+  1140→  1140→                <TrendingUp className="h-4 w-4" />
+  1141→  1141→                Ranking
+  1142→  1142→              </TabsTrigger>
+  1143→  1143→            </TabsList>
+  1144→  1144→          </div>
+  1145→  1145→
+  1146→  1146→          {/* Overview Tab */}
+  1147→  1147→          <TabsContent value="overview" className="space-y-6">
+  1148→  1148→            {/* KPI Cards */}
+  1149→  1149→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  1150→  1150→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.primary }}>
+  1151→  1151→                <CardHeader className="pb-2">
+  1152→  1152→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1153→  1153→                    <Package className="h-4 w-4" />
+  1154→  1154→                    Total de Linhas
+  1155→  1155→                  </CardTitle>
+  1156→  1156→                </CardHeader>
+  1157→  1157→                <CardContent>
+  1158→  1158→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalLinhas}</div>
+  1159→  1159→                  <p className="text-xs text-slate-400 mt-1">Registros de inspeção</p>
+  1160→  1160→                </CardContent>
+  1161→  1161→              </Card>
+  1162→  1162→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.success }}>
+  1163→  1163→                <CardHeader className="pb-2">
+  1164→  1164→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1165→  1165→                    <ShoppingCart className="h-4 w-4" />
+  1166→  1166→                    Quantidade Total
+  1167→  1167→                  </CardTitle>
+  1168→  1168→                </CardHeader>
+  1169→  1169→                <CardContent>
+  1170→  1170→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalQty}</div>
+  1171→  1171→                  <p className="text-xs text-slate-400 mt-1">Peças inspecionadas</p>
+  1172→  1172→                </CardContent>
+  1173→  1173→              </Card>
+  1174→  1174→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.warning }}>
+  1175→  1175→                <CardHeader className="pb-2">
+  1176→  1176→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1177→  1177→                    <FileSpreadsheet className="h-4 w-4" />
+  1178→  1178→                    Pedidos de Compra
+  1179→  1179→                  </CardTitle>
+  1180→  1180→                </CardHeader>
+  1181→  1181→                <CardContent>
+  1182→  1182→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalPedidos}</div>
+  1183→  1183→                  <p className="text-xs text-slate-400 mt-1">Pedidos únicos</p>
+  1184→  1184→                </CardContent>
+  1185→  1185→              </Card>
+  1186→  1186→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.info }}>
+  1187→  1187→                <CardHeader className="pb-2">
+  1188→  1188→                  <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+  1189→  1189→                    <Wrench className="h-4 w-4" />
+  1190→  1190→                    Ordens de Manutenção
+  1191→  1191→                  </CardTitle>
+  1192→  1192→                </CardHeader>
+  1193→  1193→                <CardContent>
+  1194→  1194→                  <div className="text-3xl font-bold text-slate-700">{kpis.totalOMs}</div>
+  1195→  1195→                  <p className="text-xs text-slate-400 mt-1">OMs únicas</p>
+  1196→  1196→                </CardContent>
+  1197→  1197→              </Card>
+  1198→  1198→            </div>
+  1199→  1199→
+  1200→  1200→            {/* Filters & Charts Grid */}
+  1201→  1201→            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  1202→  1202→              {/* Filters Panel */}
+  1203→  1203→              <Card className="bg-white/90 backdrop-blur-sm lg:col-span-1">
+  1204→  1204→                <CardHeader>
+  1205→  1205→                  <div className="flex items-center justify-between">
+  1206→  1206→                    <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1207→  1207→                      <Filter className="h-5 w-5" />
+  1208→  1208→                      Filtros
+  1209→  1209→                    </CardTitle>
+  1210→  1210→                    <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-slate-500">
+  1211→  1211→                      Limpar tudo
+  1212→  1212→                    </Button>
+  1213→  1213→                  </div>
+  1214→  1214→                </CardHeader>
+  1215→  1215→                <CardContent className="space-y-4">
+  1216→  1216→                  <div className="space-y-2">
+  1217→  1217→                    <label className="text-xs font-medium text-slate-600">Busca</label>
+  1218→  1218→                    <Input
+  1219→  1219→                      placeholder="PN, Descrição, Cliente..."
+  1220→  1220→                      value={searchTerm}
+  1221→  1221→                      onChange={(e) => setSearchTerm(e.target.value)}
+  1222→  1222→                      className="h-9 text-sm"
+  1223→  1223→                    />
+  1224→  1224→                  </div>
+  1225→  1225→
+  1226→  1226→                  <div className="space-y-2">
+  1227→  1227→                    <label className="text-xs font-medium text-slate-600">Empresa</label>
+  1228→  1228→                    <FilterDropdown
+  1229→  1229→                      label="Todas"
+  1230→  1230→                      options={empresaOptions}
+  1231→  1231→                      selected={empresaFilter}
+  1232→  1232→                      onChange={setEmpresaFilter}
+  1233→  1233→                    />
+  1234→  1234→                  </div>
+  1235→  1235→
+  1236→  1236→                  <div className="space-y-2">
+  1237→  1237→                    <label className="text-xs font-medium text-slate-600">Cliente</label>
+  1238→  1238→                    <FilterDropdown
+  1239→  1239→                      label="Todos"
+  1240→  1240→                      options={clienteOptions}
+  1241→  1241→                      selected={clienteFilter}
+  1242→  1242→                      onChange={setClienteFilter}
+  1243→  1243→                    />
+  1244→  1244→                  </div>
+  1245→  1245→
+  1246→  1246→                  <div className="space-y-2">
+  1247→  1247→                    <label className="text-xs font-medium text-slate-600">Equipamento</label>
+  1248→  1248→                    <FilterDropdown
+  1249→  1249→                      label="Todos"
+  1250→  1250→                      options={equipamentoOptions}
+  1251→  1251→                      selected={equipamentoFilter}
+  1252→  1252→                      onChange={setEquipamentoFilter}
+  1253→  1253→                    />
+  1254→  1254→                  </div>
+  1255→  1255→
+  1256→  1256→                  <div className="space-y-2">
+  1257→  1257→                    <label className="text-xs font-medium text-slate-600">Criticidade</label>
+  1258→  1258→                    <FilterDropdown
+  1259→  1259→                      label="Todas"
+  1260→  1260→                      options={criticidadeOptions}
+  1261→  1261→                      selected={criticidadeFilter}
+  1262→  1262→                      onChange={setCriticidadeFilter}
+  1263→  1263→                    />
+  1264→  1264→                  </div>
+  1265→  1265→
+  1266→  1266→                  <div className="space-y-2">
+  1267→  1267→                    <label className="text-xs font-medium text-slate-600">Status</label>
+  1268→  1268→                    <FilterDropdown
+  1269→  1269→                      label="Todos"
+  1270→  1270→                      options={statusOptions}
+  1271→  1271→                      selected={statusFilter}
+  1272→  1272→                      onChange={setStatusFilter}
+  1273→  1273→                    />
+  1274→  1274→                  </div>
+  1275→  1275→
+  1276→  1276→                  <div className="space-y-2">
+  1277→  1277→                    <label className="text-xs font-medium text-slate-600">Período</label>
+  1278→  1278→                    <FilterDropdown
+  1279→  1279→                      label="Todos"
+  1280→  1280→                      options={periodoOptions}
+  1281→  1281→                      selected={periodFilter}
+  1282→  1282→                      onChange={setPeriodFilter}
+  1283→  1283→                    />
+  1284→  1284→                  </div>
+  1285→  1285→
+  1286→  1286→                  <div className="space-y-2">
+  1287→  1287→                    <label className="text-xs font-medium text-slate-600">Estoque</label>
+  1288→  1288→                    <FilterDropdown
+  1289→  1289→                      label="Todos"
+  1290→  1290→                      options={estoqueOptions}
+  1291→  1291→                      selected={estoqueFilter}
+  1292→  1292→                      onChange={setEstoqueFilter}
+  1293→  1293→                    />
+  1294→  1294→                  </div>
+  1295→  1295→                </CardContent>
+  1296→  1296→              </Card>
+  1297→  1297→
+  1298→  1298→              {/* Charts */}
+  1299→  1299→              <div className="lg:col-span-2 space-y-6">
+  1300→  1300→                {/* Monthly Chart with Year Filter */}
+  1301→  1301→                <Card className="bg-white/90 backdrop-blur-sm">
+  1302→  1302→                  <CardHeader>
+  1303→  1303→                    <div className="flex items-center justify-between">
+  1304→  1304→                      <CardTitle className="text-lg font-semibold text-slate-700">
+  1305→  1305→                        Evolução por Mês
+  1306→  1306→                      </CardTitle>
+  1307→  1307→                      <Select value={chartYearFilter} onValueChange={setChartYearFilter}>
+  1308→  1308→                        <SelectTrigger className="w-32 h-8 text-sm">
+  1309→  1309→                          <SelectValue placeholder="Ano" />
+  1310→  1310→                        </SelectTrigger>
+  1311→  1311→                        <SelectContent>
+  1312→  1312→                          {availableYears.map(year => (
+  1313→  1313→                            <SelectItem key={year} value={year}>{year}</SelectItem>
+  1314→  1314→                          ))}
+  1315→  1315→                        </SelectContent>
+  1316→  1316→                      </Select>
+  1317→  1317→                    </div>
+  1318→  1318→                  </CardHeader>
+  1319→  1319→                  <CardContent>
+  1320→  1320→                    <ResponsiveContainer width="100%" height={250}>
+  1321→  1321→                      <BarChart data={monthlyChartData}>
+  1322→  1322→                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1323→  1323→                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} />
+  1324→  1324→                        <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
+  1325→  1325→                        <Tooltip
+  1326→  1326→                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1327→  1327→                          itemStyle={{ color: '#fff' }}
+  1328→  1328→                        />
+  1329→  1329→                        <Bar dataKey="value" name="Quantidade" fill="#64748b" radius={[4, 4, 0, 0]} />
+  1330→  1330→                      </BarChart>
+  1331→  1331→                    </ResponsiveContainer>
+  1332→  1332→                  </CardContent>
+  1333→  1333→                </Card>
+  1334→  1334→
+  1335→  1335→                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  1336→  1336→                  {/* Client Chart */}
+  1337→  1337→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1338→  1338→                    <CardHeader>
+  1339→  1339→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1340→  1340→                        Top 10 Clientes
+  1341→  1341→                      </CardTitle>
+  1342→  1342→                    </CardHeader>
+  1343→  1343→                    <CardContent>
+  1344→  1344→                      <ResponsiveContainer width="100%" height={200}>
+  1345→  1345→                        <BarChart data={clientChartData} layout="vertical">
+  1346→  1346→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1347→  1347→                          <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} />
+  1348→  1348→                          <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 11 }} width={80} />
+  1349→  1349→                          <Tooltip
+  1350→  1350→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1351→  1351→                            itemStyle={{ color: '#fff' }}
+  1352→  1352→                          />
+  1353→  1353→                          <Bar dataKey="Quantidade" fill="#64748b" radius={[0, 4, 4, 0]} />
+  1354→  1354→                          <Bar dataKey="Vendido" fill="#22c55e" radius={[0, 4, 4, 0]} />
+  1355→  1355→                          <Legend />
+  1356→  1356→                        </BarChart>
+  1357→  1357→                      </ResponsiveContainer>
+  1358→  1358→                    </CardContent>
+  1359→  1359→                  </Card>
+  1360→  1360→
+  1361→  1361→                  {/* Equipment Chart */}
+  1362→  1362→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1363→  1363→                    <CardHeader>
+  1364→  1364→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1365→  1365→                        Top 10 Equipamentos
+  1366→  1366→                      </CardTitle>
+  1367→  1367→                    </CardHeader>
+  1368→  1368→                    <CardContent>
+  1369→  1369→                      <ResponsiveContainer width="100%" height={200}>
+  1370→  1370→                        <BarChart data={equipmentChartData} layout="vertical">
+  1371→  1371→                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+  1372→  1372→                          <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} />
+  1373→  1373→                          <YAxis dataKey="name" type="category" tick={{ fill: '#64748b', fontSize: 11 }} width={80} />
+  1374→  1374→                          <Tooltip
+  1375→  1375→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1376→  1376→                            itemStyle={{ color: '#fff' }}
+  1377→  1377→                          />
+  1378→  1378→                          <Bar dataKey="value" fill="#64748b" radius={[0, 4, 4, 0]} />
+  1379→  1379→                        </BarChart>
+  1380→  1380→                      </ResponsiveContainer>
+  1381→  1381→                    </CardContent>
+  1382→  1382→                  </Card>
+  1383→  1383→                </div>
+  1384→  1384→
+  1385→  1385→                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  1386→  1386→                  {/* Criticity Chart */}
+  1387→  1387→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1388→  1388→                    <CardHeader>
+  1389→  1389→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1390→  1390→                        Distribuição por Criticidade
+  1391→  1391→                      </CardTitle>
+  1392→  1392→                    </CardHeader>
+  1393→  1393→                    <CardContent>
+  1394→  1394→                      <ResponsiveContainer width="100%" height={200}>
+  1395→  1395→                        <PieChart>
+  1396→  1396→                          <Pie
+  1397→  1397→                            data={criticityChartData}
+  1398→  1398→                            cx="50%"
+  1399→  1399→                            cy="50%"
+  1400→  1400→                            labelLine={false}
+  1401→  1401→                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1402→  1402→                            outerRadius={70}
+  1403→  1403→                            dataKey="value"
+  1404→  1404→                          >
+  1405→  1405→                            {criticityChartData.map((entry, index) => (
+  1406→  1406→                              <Cell key={`cell-${index}`} fill={entry.color} />
+  1407→  1407→                            ))}
+  1408→  1408→                          </Pie>
+  1409→  1409→                          <Tooltip
+  1410→  1410→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1411→  1411→                            itemStyle={{ color: '#fff' }}
+  1412→  1412→                          />
+  1413→  1413→                        </PieChart>
+  1414→  1414→                      </ResponsiveContainer>
+  1415→  1415→                    </CardContent>
+  1416→  1416→                  </Card>
+  1417→  1417→
+  1418→  1418→                  {/* Status Chart */}
+  1419→  1419→                  <Card className="bg-white/90 backdrop-blur-sm">
+  1420→  1420→                    <CardHeader>
+  1421→  1421→                      <CardTitle className="text-base font-semibold text-slate-700">
+  1422→  1422→                        Distribuição por Status
+  1423→  1423→                      </CardTitle>
+  1424→  1424→                    </CardHeader>
+  1425→  1425→                    <CardContent>
+  1426→  1426→                      <ResponsiveContainer width="100%" height={200}>
+  1427→  1427→                        <PieChart>
+  1428→  1428→                          <Pie
+  1429→  1429→                            data={statusChartData}
+  1430→  1430→                            cx="50%"
+  1431→  1431→                            cy="50%"
+  1432→  1432→                            labelLine={false}
+  1433→  1433→                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1434→  1434→                            outerRadius={70}
+  1435→  1435→                            dataKey="value"
+  1436→  1436→                          >
+  1437→  1437→                            {statusChartData.map((entry, index) => (
+  1438→  1438→                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+  1439→  1439→                            ))}
+  1440→  1440→                          </Pie>
+  1441→  1441→                          <Tooltip
+  1442→  1442→                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1443→  1443→                            itemStyle={{ color: '#fff' }}
+  1444→  1444→                          />
+  1445→  1445→                        </PieChart>
+  1446→  1446→                      </ResponsiveContainer>
+  1447→  1447→                    </CardContent>
+  1448→  1448→                  </Card>
+  1449→  1449→                </div>
+  1450→  1450→
+  1451→  1451→                {/* Origem Chart */}
+  1452→  1452→                <Card className="bg-white/90 backdrop-blur-sm">
+  1453→  1453→                  <CardHeader>
+  1454→  1454→                    <CardTitle className="text-base font-semibold text-slate-700">
+  1455→  1455→                      Distribuição por Origem
+  1456→  1456→                    </CardTitle>
+  1457→  1457→                  </CardHeader>
+  1458→  1458→                  <CardContent>
+  1459→  1459→                    <ResponsiveContainer width="100%" height={200}>
+  1460→  1460→                      <PieChart>
+  1461→  1461→                        <Pie
+  1462→  1462→                          data={origemChartData}
+  1463→  1463→                          cx="50%"
+  1464→  1464→                          cy="50%"
+  1465→  1465→                          labelLine={false}
+  1466→  1466→                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+  1467→  1467→                          outerRadius={70}
+  1468→  1468→                          dataKey="value"
+  1469→  1469→                        >
+  1470→  1470→                          {origemChartData.map((entry, index) => (
+  1471→  1471→                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+  1472→  1472→                          ))}
+  1473→  1473→                        </Pie>
+  1474→  1474→                        <Tooltip
+  1475→  1475→                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
+  1476→  1476→                          itemStyle={{ color: '#fff' }}
+  1477→  1477→                        />
+  1478→  1478→                      </PieChart>
+  1479→  1479→                    </ResponsiveContainer>
+  1480→  1480→                  </CardContent>
+  1481→  1481→                </Card>
+  1482→  1482→              </div>
+  1483→  1483→            </div>
+  1484→  1484→          </TabsContent>
+  1485→  1485→
+  1486→  1486→          {/* Opportunities Tab */}
+  1487→  1487→          <TabsContent value="opportunities" className="space-y-6">
+  1488→  1488→            {/* KPIs */}
+  1489→  1489→            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+  1490→  1490→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.primary }}>
+  1491→  1491→                <CardHeader className="pb-2">
+  1492→  1492→                  <CardTitle className="text-xs font-medium text-slate-500">Linhas</CardTitle>
+  1493→  1493→                </CardHeader>
+  1494→  1494→                <CardContent>
+  1495→  1495→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalLinhas}</div>
+  1496→  1496→                  <p className="text-xs text-slate-400">Total</p>
+  1497→  1497→                </CardContent>
+  1498→  1498→              </Card>
+  1499→  1499→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.success }}>
+  1500→  1500→                <CardHeader className="pb-2">
+  1501→  1501→                  <CardTitle className="text-xs font-medium text-slate-500">Em Aberto</CardTitle>
+  1502→  1502→                </CardHeader>
+  1503→  1503→                <CardContent>
+  1504→  1504→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalEmAberto}</div>
+  1505→  1505→                  <p className="text-xs text-slate-400">Não vendidos</p>
+  1506→  1506→                </CardContent>
+  1507→  1507→              </Card>
+  1508→  1508→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.warning }}>
+  1509→  1509→                <CardHeader className="pb-2">
+  1510→  1510→                  <CardTitle className="text-xs font-medium text-slate-500">QTY</CardTitle>
+  1511→  1511→                </CardHeader>
+  1512→  1512→                <CardContent>
+  1513→  1513→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalQty}</div>
+  1514→  1514→                  <p className="text-xs text-slate-400">Total inspeção</p>
+  1515→  1515→                </CardContent>
+  1516→  1516→              </Card>
+  1517→  1517→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.info }}>
+  1518→  1518→                <CardHeader className="pb-2">
+  1519→  1519→                  <CardTitle className="text-xs font-medium text-slate-500">Vendido</CardTitle>
+  1520→  1520→                </CardHeader>
+  1521→  1521→                <CardContent>
+  1522→  1522→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalVendido}</div>
+  1523→  1523→                  <p className="text-xs text-slate-400">Quantidade</p>
+  1524→  1524→                </CardContent>
+  1525→  1525→              </Card>
+  1526→  1526→              <Card className="bg-white/90 backdrop-blur-sm border-l-4" style={{ borderLeftColor: COLORS.danger }}>
+  1527→  1527→                <CardHeader className="pb-2">
+  1528→  1528→                  <CardTitle className="text-xs font-medium text-slate-500">NFs</CardTitle>
+  1529→  1529→                </CardHeader>
+  1530→  1530→                <CardContent>
+  1531→  1531→                  <div className="text-2xl font-bold text-slate-700">{oppKpis.totalNF}</div>
+  1532→  1532→                  <p className="text-xs text-slate-400">Notas fiscais</p>
+  1533→  1533→                </CardContent>
+  1534→  1534→              </Card>
+  1535→  1535→            </div>
+  1536→  1536→
+  1537→  1537→            {/* Filters */}
+  1538→  1538→            <Card className="bg-white/90 backdrop-blur-sm">
+  1539→  1539→              <CardHeader>
+  1540→  1540→                <div className="flex items-center justify-between">
+  1541→  1541→                  <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1542→  1542→                    <Filter className="h-5 w-5" />
+  1543→  1543→                    Filtros Avançados
+  1544→  1544→                  </CardTitle>
+  1545→  1545→                  <Button variant="ghost" size="sm" onClick={clearOppFilters} className="text-xs text-slate-500">
+  1546→  1546→                    Limpar tudo
+  1547→  1547→                  </Button>
+  1548→  1548→                </div>
+  1549→  1549→              </CardHeader>
+  1550→  1550→              <CardContent>
+  1551→  1551→                <div className="flex flex-wrap gap-3">
+  1552→  1552→                  <div className="flex-1 min-w-[200px] space-y-2">
+  1553→  1553→                    <label className="text-xs font-medium text-slate-600">Busca</label>
+  1554→  1554→                    <Input
+  1555→  1555→                      placeholder="PN, Descrição, Cliente..."
+  1556→  1556→                      value={oppSearchTerm}
+  1557→  1557→                      onChange={(e) => setOppSearchTerm(e.target.value)}
+  1558→  1558→                      className="h-9 text-sm"
+  1559→  1559→                    />
+  1560→  1560→                  </div>
+  1561→  1561→
+  1562→  1562→                  <div className="min-w-[150px] space-y-2">
+  1563→  1563→                    <label className="text-xs font-medium text-slate-600">Origem</label>
+  1564→  1564→                    <FilterDropdown
+  1565→  1565→                      label="Selecione"
+  1566→  1566→                      options={origemOptions}
+  1567→  1567→                      selected={oppOrigemFilter}
+  1568→  1568→                      onChange={(val) => {
+  1569→  1569→                        setOppOrigemFilter(val);
+  1570→  1570→                      }}
+  1571→  1571→                    />
+  1572→  1572→                  </div>
+  1573→  1573→
+  1574→  1574→                  <div className="min-w-[150px] space-y-2">
+  1575→  1575→                    <label className="text-xs font-medium text-slate-600">Mês</label>
+  1576→  1576→                    <FilterDropdown
+  1577→  1577→                      label="Todos"
+  1578→  1578→                      options={monthOptions}
+  1579→  1579→                      selected={oppMonthFilter}
+  1580→  1580→                      onChange={setOppMonthFilter}
+  1581→  1581→                    />
+  1582→  1582→                  </div>
+  1583→  1583→
+  1584→  1584→                  <div className="min-w-[150px] space-y-2">
+  1585→  1585→                    <label className="text-xs font-medium text-slate-600">Ano</label>
+  1586→  1586→                    <FilterDropdown
+  1587→  1587→                      label="Todos"
+  1588→  1588→                      options={yearOptions}
+  1589→  1589→                      selected={oppYearFilter}
+  1590→  1590→                      onChange={setOppYearFilter}
+  1591→  1591→                    />
+  1592→  1592→                  </div>
+  1593→  1593→
+  1594→  1594→                  <div className="min-w-[180px] space-y-2">
+  1595→  1595→                    <label className="text-xs font-medium text-slate-600">Cliente</label>
+  1596→  1596→                    <FilterDropdown
+  1597→  1597→                      label="Todos"
+  1598→  1598→                      options={clienteOptions}
+  1599→  1599→                      selected={oppClienteFilter}
+  1600→  1600→                      onChange={setOppClienteFilter}
+  1601→  1601→                    />
+  1602→  1602→                  </div>
+  1603→  1603→
+  1604→  1604→                  <div className="min-w-[150px] space-y-2">
+  1605→  1605→                    <label className="text-xs font-medium text-slate-600">Status</label>
+  1606→  1606→                    <FilterDropdown
+  1607→  1607→                      label="Todos"
+  1608→  1608→                      options={statusOptions}
+  1609→  1609→                      selected={oppStatusFilter}
+  1610→  1610→                      onChange={setOppStatusFilter}
+  1611→  1611→                    />
+  1612→  1612→                  </div>
+  1613→  1613→
+  1614→  1614→                  <div className="min-w-[150px] space-y-2">
+  1615→  1615→                    <label className="text-xs font-medium text-slate-600">Criticidade</label>
+  1616→  1616→                    <FilterDropdown
+  1617→  1617→                      label="Todas"
+  1618→  1618→                      options={criticidadeOptions}
+  1619→  1619→                      selected={oppCriticidadeFilter}
+  1620→  1620→                      onChange={setOppCriticidadeFilter}
+  1621→  1621→                    />
+  1622→  1622→                  </div>
+  1623→  1623→
+  1624→  1624→                  <div className="min-w-[150px] space-y-2">
+  1625→  1625→                    <label className="text-xs font-medium text-slate-600">Dias em Aberto</label>
+  1626→  1626→                    <FilterDropdown
+  1627→  1627→                      label="Todos"
+  1628→  1628→                      options={diasOptions}
+  1629→  1629→                      selected={oppDiasFilter}
+  1630→  1630→                      onChange={setOppDiasFilter}
+  1631→  1631→                    />
+  1632→  1632→                  </div>
+  1633→  1633→
+  1634→  1634→                  <div className="min-w-[150px] space-y-2">
+  1635→  1635→                    <label className="text-xs font-medium text-slate-600">Análise</label>
+  1636→  1636→                    <FilterDropdown
+  1637→  1637→                      label="Todos"
+  1638→  1638→                      options={analiseOptions}
+  1639→  1639→                      selected={oppAnaliseFilter}
+  1640→  1640→                      onChange={setOppAnaliseFilter}
+  1641→  1641→                    />
+  1642→  1642→                  </div>
+  1643→  1643→
+  1644→  1644→                  <div className="min-w-[150px] space-y-2">
+  1645→  1645→                    <label className="text-xs font-medium text-slate-600">Prazo</label>
+  1646→  1646→                    <FilterDropdown
+  1647→  1647→                      label="Todos"
+  1648→  1648→                      options={prazoOptions}
+  1649→  1649→                      selected={oppPrazoFilter}
+  1650→  1650→                      onChange={setOppPrazoFilter}
+  1651→  1651→                    />
+  1652→  1652→                  </div>
+  1653→  1653→                </div>
+  1654→  1654→              </CardContent>
+  1655→  1655→            </Card>
+  1656→  1656→
+  1657→  1657→            {/* Data Table */}
+  1658→  1658→            <Card className="bg-white/90 backdrop-blur-sm">
+  1659→  1659→              <CardHeader>
+  1660→  1660→                <div className="flex items-center justify-between">
+  1661→  1661→                  <CardTitle className="text-lg font-semibold text-slate-700">
+  1662→  1662→                    Lista de Oportunidades ({oppFilteredData.length} registros)
+  1663→  1663→                  </CardTitle>
+  1664→  1664→                  <Button
+  1665→  1665→                    variant="ghost"
+  1666→  1666→                    size="sm"
+  1667→  1667→                    className="h-8 w-8 p-0"
+  1668→  1668→                    onClick={() => setShowColumnConfigPassword(true)}
+  1669→  1669→                    title="Configurar colunas"
+  1670→  1670→                  >
+  1671→  1671→                    <Settings className="h-4 w-4 text-slate-600" />
+  1672→  1672→                  </Button>
+  1673→  1673→                </div>
+  1674→  1674→              </CardHeader>
+  1675→  1675→              <CardContent>
+  1676→  1676→                <div className="overflow-x-auto max-h-[600px]">
+  1677→  1677→                  <Table>
+  1678→  1678→                    <TableHeader className="sticky top-0 bg-slate-50 z-10">
+  1679→  1679→                      <TableRow>
+  1680→  1680→                        {visibleColumns.map((colKey) => {
+  1681→  1681→                          const column = currentOriginColumns.find(c => c.key === colKey);
+  1682→  1682→                          return column ? (
+  1683→  1683→                            <TableHead key={colKey} className="text-xs font-semibold text-slate-600 whitespace-nowrap">
+  1684→  1684→                              {column.label}
+  1685→  1685→                            </TableHead>
+  1686→  1686→                          ) : null;
+  1687→  1687→                        })}
+  1688→  1688→                      </TableRow>
+  1689→  1689→                    </TableHeader>
+  1690→  1690→                    <TableBody>
+  1691→  1691→                      {oppFilteredData.length === 0 ? (
+  1692→  1692→                        <TableRow>
+  1693→  1693→                          <TableCell colSpan={visibleColumns.length} className="text-center text-slate-400 py-8">
+  1694→  1694→                            Nenhum registro encontrado com os filtros aplicados
+  1695→  1695→                          </TableCell>
+  1696→  1696→                        </TableRow>
+  1697→  1697→                      ) : (
+  1698→  1698→                        oppFilteredData.map((record) => (
+  1699→  1699→                          <TableRow key={record.id} className="hover:bg-slate-50/50">
+  1700→  1700→                            {visibleColumns.map((colKey) => renderTableCell(record, colKey))}
+  1701→  1701→                          </TableRow>
+  1702→  1702→                        ))
+  1703→  1703→                      )}
+  1704→  1704→                    </TableBody>
+  1705→  1705→                  </Table>
+  1706→  1706→                </div>
+  1707→  1707→              </CardContent>
+  1708→  1708→            </Card>
+  1709→  1709→          </TabsContent>
+  1710→  1710→
+  1711→  1711→          {/* Ranking Tab */}
+  1712→  1712→          <TabsContent value="ranking" className="space-y-6">
+  1713→  1713→            <Card className="bg-white/90 backdrop-blur-sm">
+  1714→  1714→              <CardHeader>
+  1715→  1715→                <div className="flex items-center justify-between">
+  1716→  1716→                  <CardTitle className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+  1717→  1717→                    <TrendingUp className="h-5 w-5" />
+  1718→  1718→                    Ranking de Equipamentos
+  1719→  1719→                  </CardTitle>
+  1720→  1720→                  <div className="flex items-center gap-2">
+  1721→  1721→                    <label className="text-sm text-slate-600">Ordenar por:</label>
+  1722→  1722→                    <Select value={rankingType} onValueChange={(v: 'inspecao' | 'venda') => setRankingType(v)}>
+  1723→  1723→                      <SelectTrigger className="w-40 h-8 text-sm">
+  1724→  1724→                        <SelectValue />
+  1725→  1725→                      </SelectTrigger>
+  1726→  1726→                      <SelectContent>
+  1727→  1727→                        <SelectItem value="inspecao">Quantidade Inspeção</SelectItem>
+  1728→  1728→                        <SelectItem value="venda">Quantidade Vendida</SelectItem>
+  1729→  1729→                      </SelectContent>
+  1730→  1730→                    </Select>
+  1731→  1731→                  </div>
+  1732→  1732→                </div>
+  1733→  1733→              </CardHeader>
+  1734→  1734→              <CardContent>
+  1735→  1735→                <div className="overflow-x-auto">
+  1736→  1736→                  <Table>
+  1737→  1737→                    <TableHeader className="bg-slate-50">
+  1738→  1738→                      <TableRow>
+  1739→  1739→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap w-20">Posição</TableHead>
+  1740→  1740→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap">Equipamento</TableHead>
+  1741→  1741→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap text-right">Qtd. Inspeção</TableHead>
+  1742→  1742→                        <TableHead className="text-xs font-semibold text-slate-600 whitespace-nowrap text-right">Qtd. Vendida</TableHead>
+  1743→  1743→                      </TableRow>
+  1744→  1744→                    </TableHeader>
+  1745→  1745→                    <TableBody>
+  1746→  1746→                      {rankingData.map((item) => (
+  1747→  1747→                        <TableRow key={item.name} className="hover:bg-slate-50/50">
+  1748→  1748→                          <TableCell className="text-xs">
+  1749→  1749→                            <div
+  1750→  1750→                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+  1751→  1751→                                item.position === 1 ? 'bg-amber-400 text-white' :
+  1752→  1752→                                item.position === 2 ? 'bg-slate-400 text-white' :
+  1753→  1753→                                item.position === 3 ? 'bg-amber-600 text-white' :
+  1754→  1754→                                'bg-slate-200 text-slate-600'
+  1755→  1755→                              }`}
+  1756→  1756→                            >
+  1757→  1757→                              {item.position}
+  1758→  1758→                            </div>
+  1759→  1759→                          </TableCell>
+  1760→  1760→                          <TableCell className="text-xs font-medium text-slate-700">{item.name}</TableCell>
+  1761→  1761→                          <TableCell className="text-xs text-slate-600 text-right">{item.inspecao}</TableCell>
+  1762→  1762→                          <TableCell className="text-xs text-slate-600 text-right">{item.venda}</TableCell>
+  1763→  1763→                        </TableRow>
+  1764→  1764→                      ))}
+  1765→  1765→                    </TableBody>
+  1766→  1766→                  </Table>
+  1767→  1767→                </div>
+  1768→  1768→              </CardContent>
+  1769→  1769→            </Card>
+  1770→  1770→          </TabsContent>
+  1771→  1771→        </Tabs>
+  1772→  1772→      </main>
+  1773→  1773→
+  1774→  1774→      {/* Footer */}
+  1775→  1775→      <footer className="bg-white border-t border-slate-200 py-4 px-6 mt-auto">
+  1776→  1776→        <div className="w-full flex items-center justify-between text-xs text-slate-500">
+  1777→  1777→          <span>© 2025 Planilha de Oportunidade - Dashboard</span>
+  1778→  1778→          <span>{data.length} registros carregados</span>
+  1779→  1779→        </div>
+  1780→  1780→      </footer>
+  1781→  1781→
+  1782→  1782→      {/* Password Modal */}
+  1783→  1783→      <PasswordModal
+  1784→  1784→        open={showPasswordModal}
+  1785→  1785→        onOpenChange={setShowPasswordModal}
+  1786→  1786→        onConfirm={handleImportConfirmed}
+  1787→  1787→        title="Importar Arquivo Excel"
+  1788→  1788→        description="Digite a senha de administrador para importar os dados"
+  1789→  1789→      />
+  1790→  1790→
+  1791→  1791→      {/* Follow Up Modal */}
+  1792→  1792→      <Dialog open={showFollowUpModal} onOpenChange={setShowFollowUpModal}>
+  1793→  1793→        <DialogContent className="sm:max-w-[500px] bg-white z-[100]">
+  1794→  1794→          <DialogHeader>
+  1795→  1795→            <DialogTitle>Follow Up</DialogTitle>
+  1796→  1796→            <DialogDescription>
+  1797→  1797→              {followUpRecord && (
+  1798→  1798→                <span>
+  1799→  1799→                  <strong>PN:</strong> {followUpRecord.pn} | <strong>PO:</strong> {followUpRecord.pedidoCompra || 'N/A'} | <strong>OM:</strong> {followUpRecord.ordemManutencao || 'N/A'}
+  1800→  1800→                </span>
+  1801→  1801→              )}
+  1802→  1802→            </DialogDescription>
+  1803→  1803→          </DialogHeader>
+  1804→  1804→          <div className="grid gap-4 py-4">
+  1805→  1805→            <div className="grid gap-2">
+  1806→  1806→              <Textarea
+  1807→  1807→                placeholder="Digite as informações de follow up..."
+  1808→  1808→                value={followUpText}
+  1809→  1809→                onChange={(e) => setFollowUpText(e.target.value)}
+  1810→  1810→                rows={5}
+  1811→  1811→                disabled={deleteMode}
+  1812→  1812→              />
+  1813→  1813→            </div>
+  1814→  1814→
+  1815→  1815→            {/* Checkboxes de aplicação - mostrar em ambos os modos */}
+  1816→  1816→            {followUpRecord && (
+  1817→  1817→              <div className="space-y-2">
+  1818→  1818→                {followUpRecord.pedidoCompra && (
+  1819→  1819→                  <div className="flex items-center gap-2">
+  1820→  1820→                    <Checkbox
+  1821→  1821→                      id="apply-pedido"
+  1822→  1822→                      checked={applyToAllPedido}
+  1823→  1823→                      onCheckedChange={(checked) => setApplyToAllPedido(checked as boolean)}
+  1824→  1824→                    />
+  1825→  1825→                    <label htmlFor="apply-pedido" className="text-sm text-slate-600">
+  1826→  1826→                      Aplicar a todos os itens do pedido <strong>{followUpRecord.pedidoCompra}</strong>
+  1827→  1827→                    </label>
+  1828→  1828→                  </div>
+  1829→  1829→                )}
+  1830→  1830→
+  1831→  1831→                {followUpRecord.ordemManutencao && (
+  1832→  1832→                  <div className="flex items-center gap-2">
+  1833→  1833→                    <Checkbox
+  1834→  1834→                      id="apply-om"
+  1835→  1835→                      checked={applyToAllOM}
+  1836→  1836→                      onCheckedChange={(checked) => setApplyToAllOM(checked as boolean)}
+  1837→  1837→                    />
+  1838→  1838→                    <label htmlFor="apply-om" className="text-sm text-slate-600">
+  1839→  1839→                      Aplicar a todos os itens da OM <strong>{followUpRecord.ordemManutencao}</strong>
+  1840→  1840→                    </label>
+  1841→  1841→                  </div>
+  1842→  1842→                )}
+  1843→  1843→              </div>
+  1844→  1844→            )}
+  1845→  1845→
+  1846→  1846→            {/* Checkboxes de exclusão - só mostrar em modo de exclusão */}
+  1847→  1847→            {deleteMode && followUpRecord && (
+  1848→  1848→              <div className="space-y-2 pt-2 border-t">
+  1849→  1849→                <p className="text-sm font-medium text-slate-700 mb-2">Opções de Exclusão:</p>
+  1850→  1850→                <div className="flex items-center gap-2">
+  1851→  1851→                  <Checkbox
+  1852→  1852→                    id="delete-only"
+  1853→  1853→                    checked={!applyToAllPedido && !applyToAllOM}
+  1854→  1854→                    onCheckedChange={() => { setApplyToAllPedido(false); setApplyToAllOM(false); }}
+  1855→  1855→                  />
+  1856→  1856→                  <label htmlFor="delete-only" className="text-sm text-slate-600">
+  1857→  1857→                    Apenas este item
+  1858→  1858→                  </label>
+  1859→  1859→                </div>
+  1860→  1860→
+  1861→  1861→                {followUpRecord.pedidoCompra && (
+  1862→  1862→                  <div className="flex items-center gap-2">
+  1863→  1863→                    <Checkbox
+  1864→  1864→                      id="delete-pedido"
+  1865→  1865→                      checked={applyToAllPedido}
+  1866→  1866→                      onCheckedChange={(checked) => { setApplyToAllPedido(checked as boolean); setApplyToAllOM(false); }}
+  1867→  1867→                    />
+  1868→  1868→                    <label htmlFor="delete-pedido" className="text-sm text-slate-600">
+  1869→  1869→                      Todos do pedido <strong>{followUpRecord.pedidoCompra}</strong>
+  1870→  1870→                    </label>
+  1871→  1871→                  </div>
+  1872→  1872→                )}
+  1873→  1873→
+  1874→  1874→                {followUpRecord.ordemManutencao && (
+  1875→  1875→                  <div className="flex items-center gap-2">
+  1876→  1876→                    <Checkbox
+  1877→  1877→                      id="delete-om"
+  1878→  1878→                      checked={applyToAllOM}
+  1879→  1879→                      onCheckedChange={(checked) => { setApplyToAllOM(checked as boolean); setApplyToAllPedido(false); }}
+  1880→  1880→                    />
+  1881→  1881→                    <label htmlFor="delete-om" className="text-sm text-slate-600">
+  1882→  1882→                      Todos da OM <strong>{followUpRecord.ordemManutencao}</strong>
+  1883→  1883→                    </label>
+  1884→  1884→                  </div>
+  1885→  1885→                )}
+  1886→  1886→              </div>
+  1887→  1887→            )}
+  1888→  1888→          </div>
+  1889→  1889→          <DialogFooter>
+  1890→  1890→            <Button variant="outline" onClick={() => setShowFollowUpModal(false)}>
+  1891→  1891→              Cancelar
+  1892→  1892→            </Button>
+  1893→  1893→            {!deleteMode && (
+  1894→  1894→              <Button onClick={startDeleteMode} className="bg-red-500 hover:bg-red-600 text-white">
+  1895→  1895→                <Trash2 className="h-4 w-4 mr-2" />
+  1896→  1896→                Apagar
+  1897→  1897→              </Button>
+  1898→  1898→            )}
+  1899→  1899→            <Button onClick={saveFollowUp} style={{ backgroundColor: '#FF6600', color: 'white' }}>
+  1900→  1900→              {deleteMode ? 'Confirmar Exclusão' : 'Salvar'}
+  1901→  1901→            </Button>
+  1902→  1902→          </DialogFooter>
+  1903→  1903→        </DialogContent>
+  1904→  1904→      </Dialog>
+  1905→  1905→
+  1906→  1906→      {/* JSON Import Modal */}
+  1907→  1907→      <Dialog open={showJsonImportModal} onOpenChange={setShowJsonImportModal}>
+  1908→  1908→        <DialogContent className="sm:max-w-[400px] bg-white z-[100]">
+  1909→  1909→          <DialogHeader>
+  1910→  1910→            <DialogTitle>Importar JSON</DialogTitle>
+  1911→  1911→            <DialogDescription>
+  1912→  1912→              Confirme a importação do arquivo JSON
+  1913→  1913→            </DialogDescription>
+  1914→  1914→          </DialogHeader>
+  1915→  1915→          <DialogFooter>
+  1916→  1916→            <Button variant="outline" onClick={() => setShowJsonImportModal(false)}>
+  1917→  1917→              Cancelar
+  1918→  1918→            </Button>
+  1919→  1919→            <Button onClick={handleJsonImportConfirmed} style={{ backgroundColor: '#FF6600', color: 'white' }}>
+  1920→  1920→              Importar
+  1921→  1921→            </Button>
+  1922→  1922→          </DialogFooter>
+  1923→  1923→        </DialogContent>
+  1924→  1924→      </Dialog>
+  1925→  1925→
+  1926→  1926→      {/* Column Config Password Modal */}
+  1927→  1927→      <PasswordModal
+  1928→  1928→        open={showColumnConfigPassword}
+  1929→  1929→        onOpenChange={setShowColumnConfigPassword}
+  1930→  1930→        onConfirm={() => {
+  1931→  1931→          setShowColumnConfigPassword(false);
+  1932→  1932→          setShowColumnConfigModal(true);
+  1933→  1933→        }}
+  1934→  1934→        title="Configurar Colunas"
+  1935→  1935→        description="Digite a senha de administrador para configurar as colunas"
+  1936→  1936→      />
+  1937→  1937→
+  1938→  1938→      {/* Column Configuration Modal */}
+  1939→  1939→      <Dialog open={showColumnConfigModal} onOpenChange={setShowColumnConfigModal}>
+  1940→  1940→        <DialogContent className="sm:max-w-[800px] max-h-[90vh] bg-white z-[100] flex flex-col">
+  1941→  1941→          <DialogHeader>
+  1942→  1942→            <DialogTitle>Configurar Colunas</DialogTitle>
+  1943→  1943→            <DialogDescription>
+  1944→  1944→              Arraste para reordenar. Selecione quantas quiser e clique em Salvar.
+  1945→  1945→              <span className="block mt-1 font-medium text-orange-600">
+  1946→  1946→                Origem: {SHEET_DISPLAY_NAMES[oppOrigemFilter[0]] || oppOrigemFilter[0] || '-'}
+  1947→  1947→              </span>
+  1948→  1948→            </DialogDescription>
+  1949→  1949→          </DialogHeader>
+  1950→  1950→          <div className="flex items-center gap-2 py-3 border-b">
+  1951→  1951→            <Button variant="outline" size="sm" onClick={handleSelectAll}>Selecionar todas</Button>
+  1952→  1952→            <Button variant="outline" size="sm" onClick={handleClearAll}>Limpar todas</Button>
+  1953→  1953→            <span className="ml-auto text-sm text-slate-500">{tempVisibleColumns.length} de {currentOriginColumns.length} colunas</span>
+  1954→  1954→          </div>
+  1955→  1955→          <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 overflow-hidden">
+  1956→  1956→            <div className="flex flex-col min-h-0">
+  1957→  1957→              <h3 className="text-sm font-semibold text-slate-700 mb-2 shrink-0">Colunas Visíveis (arraste para reordenar)</h3>
+  1958→  1958→              {tempVisibleColumns.length === 0 ? (
+  1959→  1959→                <div className="flex-1 p-4 border-2 border-dashed border-slate-200 rounded-md text-center text-sm text-slate-400 flex items-center justify-center">Nenhuma coluna selecionada</div>
+  1960→  1960→              ) : (
+  1961→  1961→                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+  1962→  1962→                  <SortableContext items={tempVisibleColumns} strategy={verticalListSortingStrategy}>
+  1963→  1963→                    <div className="space-y-1.5 overflow-y-auto pr-1 flex-1" style={{ maxHeight: 'calc(70vh - 200px)' }}>
+  1964→  1964→                      {tempVisibleColumns.map((columnKey) => {
+  1965→  1965→                        const column = currentOriginColumns.find(c => c.key === columnKey);
+  1966→  1966→                        if (!column) return null;
+  1967→  1967→                        return <SortableColumnItem key={columnKey} column={column} onRemove={handleRemoveColumn} />;
+  1968→  1968→                      })}
+  1969→  1969→                    </div>
+  1970→  1970→                  </SortableContext>
+  1971→  1971→                </DndContext>
+  1972→  1972→              )}
+  1973→  1973→            </div>
+  1974→  1974→            <div className="flex flex-col min-h-0">
+  1975→  1975→              <h3 className="text-sm font-semibold text-slate-700 mb-2 shrink-0">Colunas Disponíveis</h3>
+  1976→  1976→              <div className="space-y-1 overflow-y-auto pr-1 flex-1" style={{ maxHeight: 'calc(70vh - 200px)' }}>
+  1977→  1977→                {currentOriginColumns.filter(col => !tempVisibleColumns.includes(col.key)).map((column) => (
+  1978→  1978→                  <div key={column.key} className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-md transition-colors cursor-pointer" onClick={() => handleAddColumn(column.key)}>
+  1979→  1979→                    <div className="h-4 w-4 border border-slate-300 rounded flex items-center justify-center shrink-0">
+  1980→  1980→                      <Plus className="h-3 w-3 text-slate-400" />
+  1981→  1981→                    </div>
+  1982→  1982→                    <span className="text-sm text-slate-600 flex-1">{column.label}</span>
+  1983→  1983→                  </div>
+  1984→  1984→                ))}
+  1985→  1985→                {currentOriginColumns.filter(col => !tempVisibleColumns.includes(col.key)).length === 0 && (
+  1986→  1986→                  <div className="p-4 text-center text-sm text-slate-400">Todas as colunas selecionadas</div>
+  1987→  1987→                )}
+  1988→  1988→              </div>
+  1989→  1989→            </div>
+  1990→  1990→          </div>
+  1991→  1991→          <DialogFooter className="pt-4 border-t">
+  1992→  1992→            <Button variant="outline" onClick={() => setShowColumnConfigModal(false)}>Cancelar</Button>
+  1993→  1993→            <Button onClick={handleSaveColumnConfig} style={{ backgroundColor: '#FF6600', color: 'white' }}>Salvar</Button>
+  1994→  1994→          </DialogFooter>
+  1995→  1995→        </DialogContent>
+  1996→  1996→      </Dialog>
+  1997→  1997→    </div>
+  1998→  1998→  );
+  1999→  1999→}
+  2000→  2000→
