@@ -99,6 +99,28 @@ import {
   formatDateBR,
 } from '@/components/opportunity/utils';
 
+// Parse follow-ups from "Follow Up/comercial" text (split by newlines)
+function parseFollowUpsFromComercial(text: string): FollowUpEntry[] {
+  if (!text || !text.trim()) return [];
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => ({ text: line, date: new Date().toISOString() }));
+}
+
+// Migrate existing data: convert followUpComercial text into followUps array
+function migrateFollowUps(records: OpportunityRecord[]): OpportunityRecord[] {
+  return records.map(d => {
+    if (d.followUps && d.followUps.length > 0) return d;
+    const comercial = d.followUpComercial || d.followUpLocal || '';
+    if (!comercial.trim()) return d;
+    const parsed = parseFollowUpsFromComercial(comercial);
+    if (parsed.length === 0) return d;
+    return { ...d, followUps: parsed };
+  });
+}
+
 // Sortable Column Item for Drag and Drop
 function SortableColumnItem({ column, onRemove }: { column: { key: string; label: string }; onRemove: (key: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: column.key });
@@ -228,7 +250,7 @@ export default function SalesOpportunityDashboard() {
       const json = await res.json();
       if (json.data && Array.isArray(json.data) && json.data.length > 0) {
         const parsed = json.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord);
-        setData(parsed);
+        setData(migrateFollowUps(parsed));
         if (json.excelHeadersByOrigin) {
           setExcelHeadersByOrigin(json.excelHeadersByOrigin);
         }
@@ -240,7 +262,7 @@ export default function SalesOpportunityDashboard() {
           if (saved) {
             const parsed = JSON.parse(saved);
             if (parsed.data && Array.isArray(parsed.data)) {
-              setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+              setData(migrateFollowUps(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord)));
             }
             if (parsed.excelHeadersByOrigin) {
               setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
@@ -255,7 +277,7 @@ export default function SalesOpportunityDashboard() {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed.data && Array.isArray(parsed.data)) {
-            setData(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord));
+            setData(migrateFollowUps(parsed.data.map((d: Record<string, unknown>, i: number) => parseDates(d, i) as OpportunityRecord)));
           }
           if (parsed.excelHeadersByOrigin) {
             setExcelHeadersByOrigin(parsed.excelHeadersByOrigin);
@@ -821,6 +843,7 @@ export default function SalesOpportunityDashboard() {
             previsaoChegada, notaFiscal, dataVenda,
             followUpComercial: String(getValue('followUpComercial') || '').trim(),
             followUpLocal: '', dataFollowUp: null,
+            followUps: parseFollowUpsFromComercial(String(getValue('followUpComercial') || '')),
             vinculoPasSvs: String(getValue('vinculoPasSvs') || '').trim(),
             numeroPedido: String(getValue('numeroPedido') || '').trim(),
             dataRecebimentoPedido: parseDate(getValue('dataRecebimentoPedido')),
@@ -1055,7 +1078,7 @@ export default function SalesOpportunityDashboard() {
           dataBaseFim: fu.dataBaseFim ? String(fu.dataBaseFim) : undefined,
         })) : [],
       }));
-      setData(parsedData);
+      setData(migrateFollowUps(parsedData));
       if (jsonData.excelHeadersByOrigin) {
         setExcelHeadersByOrigin(jsonData.excelHeadersByOrigin);
       }
