@@ -14,25 +14,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "Planilha de Oportunidade ZAMine",
+  description: "Dashboard de gerenciamento de oportunidades e follow-ups.",
+  keywords: ["ZAMine", "oportunidade", "follow-up", "dashboard"],
+  authors: [{ name: "ZAMine" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "Planilha de Oportunidade ZAMine",
+    description: "Dashboard de gerenciamento de oportunidades e follow-ups.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-  },
+    title: "Planilha de Oportunidade ZAMine",
+    description: "Dashboard de gerenciamento de oportunidades e follow-ups.",  },
 };
 
 export default function RootLayout({
