@@ -1,15 +1,5 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import bcrypt from 'bcryptjs';
-
-function generatePassword(): string {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let pass = '';
-  for (let i = 0; i < 4; i++) {
-    pass += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return pass;
-}
 
 // GET - List password reset requests (admin only)
 export async function GET(request: Request) {
@@ -79,7 +69,7 @@ export async function GET(request: Request) {
         createdAt: r.createdAt,
         resolvedAt: r.resolvedAt,
         resolvedByName: r.resolvedByName,
-        newPassword: r.status === 'approved' ? r.newGeneratedPassword : null,
+        newPassword: null, // user chose their own password, admin doesn't see it
       })),
     });
   } catch (error) {
@@ -127,41 +117,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Esta solicitação já foi resolvida' }, { status: 400 });
     }
 
-    let newPasswordPlain: string | null = null;
-
     if (action === 'approve') {
-      // The password was already hashed and stored when the request was created
-      // But we need to generate a NEW plain password to show to the admin
-      newPasswordPlain = generatePassword();
-      const newHashedPassword = await bcrypt.hash(newPasswordPlain, 10);
-
-      // Update user password
+      // The user chose their desired password (already hashed when request was created)
+      // Just copy it to the user account
       await db.user.update({
         where: { id: resetRequest.userId },
         data: {
-          password: newHashedPassword,
+          password: resetRequest.newGeneratedPassword, // the hash the user chose
           loginAttempts: 0,
           lockedUntil: null,
           sessionToken: null,
         },
       });
 
-      // Update request with approved status and the plain password for display
+      // Update request status
       await db.passwordResetRequest.update({
         where: { id: requestId },
         data: {
           status: 'approved',
-          newGeneratedPassword: newPasswordPlain,
           resolvedAt: new Date(),
           resolvedBy: admin.id,
         },
       });
 
+      const userName = (await db.user.findUnique({ where: { id: resetRequest.userId }, select: { name: true } }))?.name;
+
       return NextResponse.json({
         success: true,
-        message: 'Senha atualizada com sucesso!',
-        newPassword: newPasswordPlain,
-        userName: (await db.user.findUnique({ where: { id: resetRequest.userId }, select: { name: true } }))?.name,
+        message: 'Senha atualizada com sucesso! O usuário já pode logar com a nova senha.',
+        userName,
       });
     } else {
       // Reject

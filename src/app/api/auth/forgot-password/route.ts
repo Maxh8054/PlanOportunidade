@@ -2,21 +2,16 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
-function generatePassword(): string {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let pass = '';
-  for (let i = 0; i < 4; i++) {
-    pass += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return pass;
-}
-
 export async function POST(request: Request) {
   try {
-    const { email } = await request.json();
+    const { email, newPassword } = await request.json();
 
     if (!email) {
       return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
+    }
+
+    if (!newPassword || newPassword.length < 3) {
+      return NextResponse.json({ error: 'A nova senha deve ter pelo menos 3 caracteres' }, { status: 400 });
     }
 
     const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
@@ -43,8 +38,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Generate new password and create a pending request
-    const newPassword = generatePassword();
+    // Hash the desired password and create a pending request
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await db.passwordResetRequest.create({

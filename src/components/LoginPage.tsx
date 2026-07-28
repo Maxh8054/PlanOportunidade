@@ -17,6 +17,8 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [newDesiredPassword, setNewDesiredPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean } | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -35,11 +37,24 @@ export function LoginPage() {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotResult(null);
+
+    if (newDesiredPassword.length < 3) {
+      setForgotResult({ success: false, error: 'A nova senha deve ter pelo menos 3 caracteres.' });
+      return;
+    }
+
     setIsLoading(true);
 
-    const result = await forgotPassword(forgotEmail);
+    const result = await forgotPassword(forgotEmail, newDesiredPassword);
     setForgotResult(result);
     setIsLoading(false);
+  };
+
+  const resetForgotForm = () => {
+    setShowForgot(true);
+    setError('');
+    setForgotResult(null);
+    setNewDesiredPassword('');
   };
 
   return (
@@ -130,7 +145,7 @@ export function LoginPage() {
                 <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => { setShowForgot(true); setError(''); setForgotResult(null); }}
+                    onClick={resetForgotForm}
                     className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
                   >
                     Esqueci minha senha
@@ -146,7 +161,7 @@ export function LoginPage() {
                       ? 'bg-amber-50 border-amber-200 text-amber-700'
                       : forgotResult.success
                         ? 'bg-green-50 border-green-200 text-green-700'
-                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                        : 'bg-red-50 border-red-200 text-red-700'
                   }`}>
                     {forgotResult.requested || forgotResult.alreadyRequested ? (
                       <Clock className="w-5 h-5 mt-0.5 shrink-0" />
@@ -159,23 +174,15 @@ export function LoginPage() {
                       {forgotResult.requested ? (
                         <>
                           <p className="font-medium">Solicitação enviada!</p>
-                          <p className="mt-1">Sua solicitação de troca de senha foi enviada ao administrador. Aguarde a aprovação para receber sua nova senha.</p>
+                          <p className="mt-1">Sua solicitação de troca de senha foi enviada ao administrador. Aguarde a aprovação.</p>
                         </>
                       ) : forgotResult.alreadyRequested ? (
                         <>
                           <p className="font-medium">Solicitação pendente</p>
-                          <p className="mt-1">Você já possui uma solicitação de troca de senha aguardando aprovação. Aguarde o administrador analisar.</p>
-                        </>
-                      ) : forgotResult.success ? (
-                        <>
-                          <p className="font-medium">Nova senha gerada!</p>
-                          <p className="text-2xl font-mono font-bold mt-1 tracking-widest text-center py-2 bg-white rounded border">
-                            {forgotResult.newPassword}
-                          </p>
-                          <p className="mt-2 text-xs text-green-600">Use esta senha para fazer login.</p>
+                          <p className="mt-1">Você já possui uma solicitação de troca de senha aguardando aprovação.</p>
                         </>
                       ) : (
-                        <span>{forgotResult.message || forgotResult.error || 'Erro ao processar solicitação.'}</span>
+                        <span>{forgotResult.error || forgotResult.message || 'Erro ao processar solicitação.'}</span>
                       )}
                     </div>
                   </div>
@@ -198,10 +205,35 @@ export function LoginPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">Nova senha desejada</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      id="new-password"
+                      type={showNewPassword ? 'text' : 'password'}
+                      placeholder="Digite a nova senha desejada"
+                      value={newDesiredPassword}
+                      onChange={(e) => setNewDesiredPassword(e.target.value)}
+                      className="pl-10 pr-10"
+                      required
+                      minLength={3}
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
                 <Button
                   type="submit"
                   className="w-full bg-slate-800 hover:bg-slate-700 text-white"
-                  disabled={isLoading}
+                  disabled={isLoading || newDesiredPassword.length < 3}
                 >
                   {isLoading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -216,7 +248,7 @@ export function LoginPage() {
                 <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => { setShowForgot(false); setForgotResult(null); setError(''); }}
+                    onClick={() => { setShowForgot(false); setForgotResult(null); setError(''); setNewDesiredPassword(''); }}
                     className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
                   >
                     Voltar ao login

@@ -247,6 +247,52 @@ export default function SalesOpportunityDashboard() {
     return serialized;
   });
 
+  // Load password reset requests when admin opens the panel
+  const loadPasswordRequests = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setLoadingRequests(true);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPasswordRequests(data);
+      }
+    } catch (e) {
+      console.error('Failed to load password requests:', e);
+    }
+    setLoadingRequests(false);
+  };
+
+  const handlePasswordRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setProcessingRequestId(requestId);
+    setPasswordRequestResult(null);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ requestId, action }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordRequestResult({ success: true, message: json.message, newPassword: json.newPassword, userName: json.userName });
+        await loadPasswordRequests();
+      } else {
+        setPasswordRequestResult({ success: false, message: json.error || 'Erro ao processar' });
+      }
+    } catch (e) {
+      setPasswordRequestResult({ success: false, message: 'Erro de conexão' });
+    }
+    setProcessingRequestId(null);
+  };
+
   // Check auth on mount
   useEffect(() => {
     checkAuth();
@@ -258,7 +304,18 @@ export default function SalesOpportunityDashboard() {
     if (hasLoadedRef.current) return;
     hasLoadedRef.current = true;
     loadData();
+    // Auto-load pending password requests for admins
+    if (isAdmin) loadPasswordRequests();
   }, [isAuthenticated]);
+
+  // Poll pending requests every 30s for admins
+  useEffect(() => {
+    if (!isAdmin || !isAuthenticated) return;
+    const interval = setInterval(() => {
+      loadPasswordRequests();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isAdmin, isAuthenticated]);
 
   async function loadData() {
     setIsSyncing(true);
@@ -1350,52 +1407,6 @@ export default function SalesOpportunityDashboard() {
       </div>
     );
   }
-
-  // Load password reset requests when admin opens the panel
-  const loadPasswordRequests = async () => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-    setLoadingRequests(true);
-    try {
-      const res = await fetch('/api/auth/password-requests', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPasswordRequests(data);
-      }
-    } catch (e) {
-      console.error('Failed to load password requests:', e);
-    }
-    setLoadingRequests(false);
-  };
-
-  const handlePasswordRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-    setProcessingRequestId(requestId);
-    setPasswordRequestResult(null);
-    try {
-      const res = await fetch('/api/auth/password-requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ requestId, action }),
-      });
-      const json = await res.json();
-      if (res.ok) {
-        setPasswordRequestResult({ success: true, message: json.message, newPassword: json.newPassword, userName: json.userName });
-        await loadPasswordRequests(); // refresh list
-      } else {
-        setPasswordRequestResult({ success: false, message: json.error || 'Erro ao processar' });
-      }
-    } catch (e) {
-      setPasswordRequestResult({ success: false, message: 'Erro de conexão' });
-    }
-    setProcessingRequestId(null);
-  };
 
   if (!isAuthenticated || !user) {
     return <LoginPage />;
@@ -2496,15 +2507,7 @@ export default function SalesOpportunityDashboard() {
                 : 'bg-red-50 border-red-200 text-red-700'
             }`}>
               {passwordRequestResult.success ? <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" /> : <X className="w-4 h-4 mt-0.5 shrink-0" />}
-              <div>
-                <p className="font-medium">{passwordRequestResult.message}</p>
-                {passwordRequestResult.success && passwordRequestResult.newPassword && (
-                  <div className="mt-2 p-2 bg-white rounded border text-center">
-                    <p className="text-xs text-slate-500">Nova senha de {passwordRequestResult.userName}:</p>
-                    <p className="text-2xl font-mono font-bold tracking-widest mt-1">{passwordRequestResult.newPassword}</p>
-                  </div>
-                )}
-              </div>
+              <p className="font-medium">{passwordRequestResult.message}</p>
             </div>
           )}
 
@@ -2597,11 +2600,11 @@ export default function SalesOpportunityDashboard() {
                         por {req.resolvedByName} em {req.resolvedAt ? new Date(req.resolvedAt).toLocaleString('pt-BR') : '-'}
                       </p>
                     </div>
-                    {req.status === 'approved' && req.newPassword && (
-                      <span className="font-mono font-bold text-green-700 tracking-wider shrink-0 ml-2">
-                        {req.newPassword}
+                    {req.status === 'approved' ? (
+                      <span className="font-mono font-bold text-green-700 shrink-0 ml-2">
+                        Senha atualizada
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 ))}
               </div>
