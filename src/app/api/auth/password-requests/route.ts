@@ -147,6 +147,31 @@ export async function POST(request: Request) {
       });
     }
 
+    // Delete a single resolved request from history
+    if (action === 'delete') {
+      const { requestId } = body;
+      if (!requestId) {
+        return NextResponse.json({ error: 'Parâmetro obrigatório: requestId' }, { status: 400 });
+      }
+      const req = await db.passwordResetRequest.findUnique({ where: { id: requestId } });
+      if (!req) {
+        return NextResponse.json({ error: 'Solicitação não encontrada' }, { status: 404 });
+      }
+      await db.passwordResetRequest.delete({ where: { id: requestId } });
+      return NextResponse.json({ success: true, message: 'Solicitação removida do histórico.' });
+    }
+
+    // Delete all resolved requests from history
+    if (action === 'deleteAll') {
+      const result = await db.passwordResetRequest.deleteMany({
+        where: { status: { in: ['approved', 'rejected'] } },
+      });
+      return NextResponse.json({
+        success: true,
+        message: `${result.count} solicitação(ões) removida(s) do histórico.`,
+      });
+    }
+
     // Approve or reject password reset request
     const { requestId } = body;
 
@@ -155,7 +180,7 @@ export async function POST(request: Request) {
     }
 
     if (!['approve', 'reject'].includes(action)) {
-      return NextResponse.json({ error: 'Ação inválida. Use "approve", "reject" ou "unlock".' }, { status: 400 });
+      return NextResponse.json({ error: 'Ação inválida. Use "approve", "reject", "unlock", "delete" ou "deleteAll".' }, { status: 400 });
     }
 
     const resetRequest = await db.passwordResetRequest.findUnique({

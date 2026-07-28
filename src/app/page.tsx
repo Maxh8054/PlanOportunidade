@@ -297,6 +297,63 @@ export default function SalesOpportunityDashboard() {
     setProcessingRequestId(null);
   };
 
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+
+  const handleDeleteRequest = async (requestId: string) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setProcessingRequestId(requestId);
+    setPasswordRequestResult(null);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: 'delete', requestId }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordRequestResult({ success: true, message: json.message });
+        await loadPasswordRequests();
+      } else {
+        setPasswordRequestResult({ success: false, message: json.error || 'Erro ao deletar' });
+      }
+    } catch (e) {
+      setPasswordRequestResult({ success: false, message: 'Erro de conexão' });
+    }
+    setProcessingRequestId(null);
+  };
+
+  const handleDeleteAllHistory = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setShowDeleteAllConfirm(false);
+    setLoadingRequests(true);
+    setPasswordRequestResult(null);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: 'deleteAll' }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordRequestResult({ success: true, message: json.message });
+        await loadPasswordRequests();
+      } else {
+        setPasswordRequestResult({ success: false, message: json.error || 'Erro ao apagar histórico' });
+      }
+    } catch (e) {
+      setPasswordRequestResult({ success: false, message: 'Erro de conexão' });
+    }
+    setLoadingRequests(false);
+  };
+
   const handlePasswordRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
     const token = localStorage.getItem('auth_token');
     if (!token) return;
@@ -2655,11 +2712,54 @@ export default function SalesOpportunityDashboard() {
 
           {/* Resolved history */}
           <div className="mt-4 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-              <History className="h-4 w-4 text-slate-400" />
-              Histórico
-            </h3>
-            {passwordRequests.resolved.length === 0 ? (
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <History className="h-4 w-4 text-slate-400" />
+                Histórico ({passwordRequests.resolved.length})
+              </h3>
+              {passwordRequests.resolved.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 text-xs h-7"
+                  onClick={() => setShowDeleteAllConfirm(true)}
+                  disabled={loadingRequests}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Apagar Tudo
+                </Button>
+              )}
+            </div>
+
+            {/* Confirm delete all dialog */}
+            {showDeleteAllConfirm && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 font-medium mb-2">
+                  Tem certeza que deseja apagar todo o histórico ({passwordRequests.resolved.length} registro(s))?
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1 bg-red-600 hover:bg-red-700 text-white text-xs h-7"
+                    onClick={handleDeleteAllHistory}
+                    disabled={loadingRequests}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Sim, Apagar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7"
+                    onClick={() => setShowDeleteAllConfirm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {passwordRequests.resolved.length === 0 && !showDeleteAllConfirm ? (
               <div className="text-center py-4 text-sm text-slate-400">
                 Nenhum histórico
               </div>
@@ -2687,11 +2787,26 @@ export default function SalesOpportunityDashboard() {
                           por {req.resolvedByName} em {req.resolvedAt ? new Date(req.resolvedAt).toLocaleString('pt-BR') : '-'}
                         </p>
                       </div>
-                      {req.status === 'approved' ? (
-                        <span className="font-mono font-bold text-green-700 shrink-0 ml-2">
-                          Senha atualizada
-                        </span>
-                      ) : null}
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        {req.status === 'approved' ? (
+                          <span className="font-mono font-bold text-green-700 text-xs">
+                            ✓
+                          </span>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                          disabled={processingRequestId === req.id}
+                          onClick={() => handleDeleteRequest(req.id)}
+                        >
+                          {processingRequestId === req.id ? (
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-300 border-t-red-500" />
+                          ) : (
+                            <Trash2 className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     {/* Show new password in history for approved requests */}
                     {req.status === 'approved' && req.desiredPassword && (
