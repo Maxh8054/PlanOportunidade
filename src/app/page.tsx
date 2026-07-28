@@ -252,12 +252,10 @@ export default function SalesOpportunityDashboard() {
 
   // Load password reset requests when admin opens the panel
   const loadPasswordRequests = async () => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
     setLoadingRequests(true);
     try {
       const res = await fetch('/api/auth/password-requests', {
-        headers: { 'Authorization': `Bearer ${token}` },
+        credentials: 'same-origin',
       });
       if (res.ok) {
         const data = await res.json();
@@ -271,17 +269,13 @@ export default function SalesOpportunityDashboard() {
   };
 
   const handleUnlockUser = async (userId: string) => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
     setProcessingRequestId(userId);
     setPasswordRequestResult(null);
     try {
       const res = await fetch('/api/auth/password-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ action: 'unlock', userId }),
       });
       const json = await res.json();
@@ -300,17 +294,13 @@ export default function SalesOpportunityDashboard() {
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
 
   const handleDeleteRequest = async (requestId: string) => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
     setProcessingRequestId(requestId);
     setPasswordRequestResult(null);
     try {
       const res = await fetch('/api/auth/password-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ action: 'delete', requestId }),
       });
       const json = await res.json();
@@ -327,18 +317,14 @@ export default function SalesOpportunityDashboard() {
   };
 
   const handleDeleteAllHistory = async () => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
     setShowDeleteAllConfirm(false);
     setLoadingRequests(true);
     setPasswordRequestResult(null);
     try {
       const res = await fetch('/api/auth/password-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ action: 'deleteAll' }),
       });
       const json = await res.json();
@@ -355,17 +341,13 @@ export default function SalesOpportunityDashboard() {
   };
 
   const handlePasswordRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
     setProcessingRequestId(requestId);
     setPasswordRequestResult(null);
     try {
       const res = await fetch('/api/auth/password-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ requestId, action }),
       });
       const json = await res.json();

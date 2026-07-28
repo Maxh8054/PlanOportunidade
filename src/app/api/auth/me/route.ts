@@ -1,49 +1,49 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getSessionToken, clearSessionCookie, validateSession } from '@/lib/auth';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 });
-    }
-
-    const user = await db.user.findFirst({
-      where: { sessionToken: token },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-      },
-    });
+    const token = await getSessionToken();
+    const user = await validateSession(token);
 
     if (!user) {
-      return NextResponse.json({ error: 'Sessão inválida' }, { status: 401 });
+      return NextResponse.json({ error: 'Sessão inválida ou expirada' }, {
+        status: 401,
+        headers: clearSessionCookie(),
+      });
     }
 
-    return NextResponse.json({ user });
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
     console.error('Auth me error:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '');
-
+    const token = await getSessionToken();
     if (!token) {
       return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 });
     }
 
+    // Clear session from database
     await db.user.updateMany({
       where: { sessionToken: token },
-      data: { sessionToken: null },
+      data: { sessionToken: null, tokenExpiresAt: null },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: clearSessionCookie(),
+    });
   } catch (error) {
     console.error('Auth logout error:', error);
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });

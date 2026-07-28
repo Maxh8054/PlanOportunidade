@@ -1,11 +1,14 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSessionToken, validateSession, unauthorized, forbidden } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const record = await db.dashboardData.findUnique({
-      where: { id: "singleton" },
-    });
+    const token = await getSessionToken();
+    const user = await validateSession(token);
+    if (!user) return unauthorized();
+
+    const record = await db.dashboardData.findUnique({ where: { id: 'singleton' } });
 
     if (!record) {
       return NextResponse.json({ data: [], excelHeadersByOrigin: {}, updatedAt: null });
@@ -18,24 +21,28 @@ export async function GET() {
       updatedAt: record.updatedAt,
     });
   } catch (error) {
-    console.error("GET error:", error);
+    console.error('GET dashboard-data error:', error);
     return NextResponse.json({ data: [], excelHeadersByOrigin: {}, updatedAt: null });
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const token = await getSessionToken();
+    const admin = await validateSession(token);
+    if (!admin || admin.role !== 'admin') return forbidden('Apenas administradores podem alterar os dados.');
+
     const body = await request.json();
 
     await db.dashboardData.upsert({
-      where: { id: "singleton" },
+      where: { id: 'singleton' },
       update: {
         data: JSON.stringify(body.data),
         totalRecords: body.totalRecords ?? 0,
         excelHeadersByOrigin: JSON.stringify(body.excelHeadersByOrigin ?? {}),
       },
       create: {
-        id: "singleton",
+        id: 'singleton',
         data: JSON.stringify(body.data),
         totalRecords: body.totalRecords ?? 0,
         excelHeadersByOrigin: JSON.stringify(body.excelHeadersByOrigin ?? {}),
@@ -44,10 +51,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("POST error:", error);
-    return NextResponse.json(
-      { success: false, error: String(error) },
-      { status: 500 }
-    );
+    console.error('POST dashboard-data error:', error);
+    return NextResponse.json({ success: false, error: 'Erro ao salvar dados.' }, { status: 500 });
   }
 }

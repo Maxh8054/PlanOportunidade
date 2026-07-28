@@ -9,7 +9,6 @@ interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null;
-  token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -21,7 +20,6 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null,
   isLoading: true,
   isAuthenticated: false,
   isAdmin: false,
@@ -32,6 +30,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        credentials: 'same-origin',
       });
       const json = await res.json();
 
@@ -39,10 +38,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { success: false, error: json.error || 'Erro ao fazer login' };
       }
 
-      const { token, user } = json;
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('auth_user', JSON.stringify(user));
-      set({ user, token, isAuthenticated: true, isAdmin: user.role === 'admin' });
+      const { user } = json;
+      set({ user, isAuthenticated: true, isAdmin: user.role === 'admin' });
       return { success: true };
     } catch {
       return { success: false, error: 'Erro de conexão com o servidor' };
@@ -50,51 +47,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    const { token } = get();
-    if (token) {
-      try {
-        await fetch('/api/auth/me', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-      } catch { /* ignore */ }
-    }
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-    set({ user: null, token: null, isAuthenticated: false, isAdmin: false });
+    try {
+      await fetch('/api/auth/me', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch { /* ignore */ }
+    set({ user: null, isAuthenticated: false, isAdmin: false });
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('auth_token');
-    const storedUser = localStorage.getItem('auth_user');
-
-    if (!token || !storedUser) {
-      set({ isLoading: false, isAuthenticated: false, user: null, token: null, isAdmin: false });
-      return;
-    }
-
     try {
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
 
       if (!res.ok) {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
-        set({ isLoading: false, isAuthenticated: false, user: null, token: null, isAdmin: false });
+        set({ isLoading: false, isAuthenticated: false, user: null, isAdmin: false });
         return;
       }
 
       const { user } = await res.json();
-      set({ user, token, isAuthenticated: true, isAdmin: user.role === 'admin', isLoading: false });
+      set({ user, isAuthenticated: true, isAdmin: user.role === 'admin', isLoading: false });
     } catch {
-      // If server is unreachable, use cached user
-      try {
-        const cachedUser = JSON.parse(storedUser);
-        set({ user: cachedUser, token, isAuthenticated: true, isAdmin: cachedUser.role === 'admin', isLoading: false });
-      } catch {
-        set({ isLoading: false, isAuthenticated: false, user: null, token: null, isAdmin: false });
-      }
+      // Server unreachable — keep optimistic state, just stop loading
+      set({ isLoading: false });
     }
   },
 

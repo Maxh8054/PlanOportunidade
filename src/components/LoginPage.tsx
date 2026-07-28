@@ -38,8 +38,8 @@ export function LoginPage() {
     e.preventDefault();
     setForgotResult(null);
 
-    if (newDesiredPassword.length < 3) {
-      setForgotResult({ success: false, error: 'A nova senha deve ter pelo menos 3 caracteres.' });
+    if (newDesiredPassword.length < 8) {
+      setForgotResult({ success: false, error: 'A nova senha deve ter pelo menos 8 caracteres.' });
       return;
     }
 
@@ -217,7 +217,7 @@ export function LoginPage() {
                       onChange={(e) => setNewDesiredPassword(e.target.value)}
                       className="pl-10 pr-10"
                       required
-                      minLength={3}
+                      minLength={8}
                       disabled={isLoading}
                     />
                     <button
@@ -233,7 +233,7 @@ export function LoginPage() {
                 <Button
                   type="submit"
                   className="w-full bg-slate-800 hover:bg-slate-700 text-white"
-                  disabled={isLoading || newDesiredPassword.length < 3}
+                  disabled={isLoading || newDesiredPassword.length < 8}
                 >
                   {isLoading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

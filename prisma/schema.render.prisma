@@ -15,7 +15,8 @@ model User {
   role          String    @default("user")
   loginAttempts Int       @default(0)
   lockedUntil   DateTime?
-  sessionToken  String?
+  sessionToken  String?   @unique
+  tokenExpiresAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   passwordResetRequests PasswordResetRequest[]
