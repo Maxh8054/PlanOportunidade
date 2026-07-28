@@ -48,29 +48,39 @@ async function seed() {
   }
 
   for (const user of DEFAULT_USERS) {
-    const password = getPassword(user.email);
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await prisma.user.upsert({
-      where: { email: user.email },
-      update: {
-        password: hashedPassword,
-        role: user.role,
-        loginAttempts: 0,
-        lockedUntil: null,
-        sessionToken: null,
-        tokenExpiresAt: null,
-      },
-      create: {
-        name: user.name,
-        email: user.email,
-        password: hashedPassword,
-        role: user.role,
-      },
-    });
-    console.log(`  ✓ ${user.email} (${user.role})`);
+    const existing = await prisma.user.findUnique({ where: { email: user.email } });
+
+    if (existing) {
+      // User already exists — ONLY update non-sensitive fields (role, reset lockouts)
+      // NEVER overwrite password (admin may have approved a password change)
+      await prisma.user.update({
+        where: { email: user.email },
+        data: {
+          role: user.role,
+          name: user.name,
+          // Reset lockout state only (password stays untouched)
+          lockedUntil: null,
+          loginAttempts: 0,
+        },
+      });
+      console.log(`  ↻ ${user.email} — existing user, password preserved (${user.role})`);
+    } else {
+      // New user — create with seed password
+      const password = getPassword(user.email);
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await prisma.user.create({
+        data: {
+          name: user.name,
+          email: user.email,
+          password: hashedPassword,
+          role: user.role,
+        },
+      });
+      console.log(`  ✓ ${user.email} — new user created (${user.role})`);
+    }
   }
 
-  console.log('\nDone! Users created/updated.');
+  console.log('\nDone! Users created/updated. Existing passwords were preserved.');
 }
 
 seed()
