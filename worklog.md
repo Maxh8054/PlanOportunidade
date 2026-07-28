@@ -89,3 +89,34 @@ Stage Summary:
 - Quando um usuário excede 5 tentativas de login e fica bloqueado, ele aparece na seção "Usuários Bloqueados" na aba "Senhas"
 - O admin pode desbloquear manualmente qualquer usuário bloqueado com um clique
 - O formulário de "Esqueci minha senha" agora exige que o usuário digite a senha atual (verificada com bcrypt) e a nova desejada
+
+---
+Task ID: 3
+Agent: Z.ai Code (main)
+Task: Implement 7 comprehensive security improvements
+
+Work Log:
+- Added security headers via next.config.ts (HSTS, X-Frame-Options, CSP, X-Content-Type-Options, XSS-Protection, Referrer-Policy, Permissions-Policy)
+- Removed deprecated middleware.ts (Next.js 16 deprecates middleware in favor of proxy)
+- Created src/lib/password-strength.ts with validation rules (8+ chars, uppercase, lowercase, number, special) and common password blacklist
+- Updated LoginPage.tsx with real-time password strength indicator and visual checklist
+- Updated forgot-password API with strong password validation
+- Created AuditLog table in both schema.prisma and schema.render.prisma
+- Created src/lib/audit-log.ts fire-and-forget audit logging service
+- Added audit logs to login, logout, forgot-password, password-requests (approve/reject/unlock)
+- Updated src/lib/rate-limit.ts with global brute-force detection (blocks IP trying 5+ different accounts)
+- Updated login API: removed remaining attempts from error messages, added brute-force detection
+- Updated Dockerfile: removed --accept-data-loss from db push command
+- Added auto-expire for pending password requests older than 7 days
+- Verified security headers via curl (all confirmed working)
+- Lint clean, pushed to GitHub
+
+Stage Summary:
+- All 7 security improvements implemented and deployed
+- Security headers confirmed: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, XSS-Protection, Referrer-Policy, Permissions-Policy
+- Password policy: 8+ chars with uppercase, lowercase, number, and special character requirements
+- Audit logging tracks all auth events (login, logout, password changes, brute-force blocks)
+- Global brute-force protection blocks IPs attacking multiple accounts
+- Login error messages no longer reveal information about valid accounts
+- Database deploy is now safe (no --accept-data-loss)
+- Pending password reset requests auto-expire after 7 days
