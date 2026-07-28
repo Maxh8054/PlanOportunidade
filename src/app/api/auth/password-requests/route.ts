@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// GET - List password reset requests (admin only)
+// GET - List password reset requests + locked users (admin only)
 export async function GET(request: Request) {
   try {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
@@ -49,12 +49,29 @@ export async function GET(request: Request) {
       return { ...r, resolvedByName };
     }));
 
+    // Fetch locked users (lockedUntil > now)
+    const lockedUsers = await db.user.findMany({
+      where: {
+        lockedUntil: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        loginAttempts: true,
+        lockedUntil: true,
+      },
+      orderBy: { lockedUntil: 'desc' },
+    });
+
     return NextResponse.json({
       pending: requests.map(r => ({
         id: r.id,
         userId: r.userId,
         userName: r.user.name,
         userEmail: r.user.email,
+        oldPassword: r.oldPassword,
+        desiredPassword: r.desiredPassword,
         createdAt: r.createdAt,
       })),
       resolved: resolvedWithAdmin.map(r => ({
@@ -63,10 +80,18 @@ export async function GET(request: Request) {
         userName: r.user.name,
         userEmail: r.user.email,
         status: r.status,
+        oldPassword: r.oldPassword,
+        desiredPassword: r.desiredPassword,
         createdAt: r.createdAt,
         resolvedAt: r.resolvedAt,
         resolvedByName: r.resolvedByName,
-        newPassword: null, // user chose their own password, admin doesn't see it
+      })),
+      lockedUsers: lockedUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        loginAttempts: u.loginAttempts,
+        lockedUntil: u.lockedUntil,
       })),
     });
   } catch (error) {
@@ -75,7 +100,7 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - Approve or reject a password reset request (admin only)
+// POST - Approve, reject, or unlock (admin only)
 export async function POST(request: Request) {
   try {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '');
@@ -92,14 +117,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
-    const { requestId, action } = await request.json();
+    const body = await request.json();
+    const { action } = body;
+
+    // Unlock action
+    if (action === 'unlock') {
+      const { userId } = body;
+
+      if (!userId) {
+        return NextResponse.json({ error: 'Parâmetro obrigatório: userId' }, { status: 400 });
+      }
+
+      const user = await db.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      }
+
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          loginAttempts: 0,
+          lockedUntil: null,
+          sessionToken: null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Login de ${user.name} desbloqueado com sucesso!`,
+        userName: user.name,
+      });
+    }
+
+    // Approve or reject password reset request
+    const { requestId } = body;
 
     if (!requestId || !action) {
       return NextResponse.json({ error: 'Parâmetros obrigatórios: requestId, action' }, { status: 400 });
     }
 
     if (!['approve', 'reject'].includes(action)) {
-      return NextResponse.json({ error: 'Ação inválida. Use "approve" ou "reject".' }, { status: 400 });
+      return NextResponse.json({ error: 'Ação inválida. Use "approve", "reject" ou "unlock".' }, { status: 400 });
     }
 
     const resetRequest = await db.passwordResetRequest.findUnique({
@@ -151,6 +209,8 @@ export async function POST(request: Request) {
         data: {
           status: 'rejected',
           newGeneratedPassword: '',
+          oldPassword: '',
+          desiredPassword: '',
           resolvedAt: new Date(),
           resolvedBy: admin.id,
         },

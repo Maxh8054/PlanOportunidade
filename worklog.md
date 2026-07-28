@@ -57,3 +57,35 @@ Stage Summary:
 - O campo excelHeadersByOrigin (configuração de colunas por aba) agora persiste no servidor junto com os dados
 - Ciclo completo de save→load verificado via curl + Agent Browser
 - NOTA: no Render (free tier), SQLite é efêmero — para persistência real em produção, recomenda-se usar PostgreSQL ou banco gerenciado
+
+---
+Task ID: 2
+Agent: Z.ai Code (main)
+Task: Adicionar senha atual + nova senha nas solicitações de troca, e seção de desbloqueio de usuários na aba "Senhas"
+
+Work Log:
+- Adicionados campos `oldPassword` (String?) e `desiredPassword` (String?) ao modelo PasswordResetRequest nos schemas SQLite e PostgreSQL
+- Rodado `bun run db:push` para sincronizar schema local e regenerar Prisma Client
+- Atualizado `src/app/api/auth/forgot-password/route.ts` para aceitar `currentPassword`, verificar com bcrypt.compare, e armazenar ambas as senhas em plaintext para visualização do admin
+- Atualizado `src/app/api/auth/password-requests/route.ts` GET para retornar também `lockedUsers` (usuários com lockedUntil > now)
+- Adicionado suporte a ação `unlock` no POST do password-requests (reseta loginAttempts, lockedUntil, sessionToken)
+- Atualizado `src/components/LoginPage.tsx` para incluir campo "Senha atual" no formulário de forgot password, com toggle de visibilidade
+- Atualizado `src/store/auth-store.ts` interface e implementação de forgotPassword para aceitar `currentPassword` como terceiro parâmetro
+- Atualizado `src/app/page.tsx`:
+  - Adicionados imports Unlock e UserLock do lucide-react
+  - Adicionado estado `lockedUsers` 
+  - Adicionada função `handleUnlockUser` para desbloquear via API
+  - Atualizado `loadPasswordRequests` para popular lockedUsers
+  - Badge do botão "Senhas" agora mostra total de pendentes + bloqueados
+  - Diálogo "Senhas e Bloqueios" agora tem:
+    - Seção "Usuários Bloqueados" com cards vermelhos e botão "Desbloquear" azul
+    - Seção "Solicitações Pendentes" mostra cards com grid de 2 colunas: "Senha Atual" e "Nova Senha Desejada"
+    - Seção "Histórico" mostra cards aprovados com "Antes" e "Depois" das senhas
+- Corrigido type mismatch pre-existente: `alreadyRequested` de string para boolean no auth-store
+- Lint e TypeScript checks passam sem erros nos arquivos modificados
+
+Stage Summary:
+- O admin agora vê a senha atual e a nova desejada ao aprovar/rejeitar solicitações de troca de senha
+- Quando um usuário excede 5 tentativas de login e fica bloqueado, ele aparece na seção "Usuários Bloqueados" na aba "Senhas"
+- O admin pode desbloquear manualmente qualquer usuário bloqueado com um clique
+- O formulário de "Esqueci minha senha" agora exige que o usuário digite a senha atual (verificada com bcrypt) e a nova desejada

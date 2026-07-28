@@ -37,6 +37,8 @@ model PasswordResetRequest {
   user                 User      @relation(fields: [userId], references: [id])
   status               String    @default("pending") // pending, approved, rejected
   newGeneratedPassword String
+  oldPassword          String?
+  desiredPassword      String?
   reason               String?
   createdAt            DateTime  @default(now())
   resolvedAt           DateTime?
