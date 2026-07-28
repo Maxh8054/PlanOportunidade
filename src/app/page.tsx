@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { useAuthStore } from '@/store/auth-store';
+import { LoginPage } from '@/components/LoginPage';
 import {
   Card,
   CardContent,
@@ -161,6 +163,7 @@ export default function SalesOpportunityDashboard() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const { user, isAuthenticated, isLoading: authLoading, isAdmin, logout, checkAuth } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasLoadedRef = useRef(false);
 
@@ -236,12 +239,18 @@ export default function SalesOpportunityDashboard() {
     return serialized;
   });
 
-  // Load from API on mount
+  // Check auth on mount
   useEffect(() => {
+    checkAuth();
+  }, []);
+
+  // Load from API on mount (after auth)
+  useEffect(() => {
+    if (!isAuthenticated) return;
     if (hasLoadedRef.current) return;
     hasLoadedRef.current = true;
     loadData();
-  }, []);
+  }, [isAuthenticated]);
 
   async function loadData() {
     setIsSyncing(true);
@@ -1325,6 +1334,19 @@ export default function SalesOpportunityDashboard() {
     }
   };
 
+  // Show login page if not authenticated
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
       {/* Header */}
@@ -1350,7 +1372,20 @@ export default function SalesOpportunityDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* User info + Logout */}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500">{user?.name?.split(' ')[0]}{isAdmin ? ' ⚙️' : ''}</span>
+              <button
+                onClick={logout}
+                className="text-xs text-slate-400 hover:text-red-500 transition-colors underline underline-offset-2"
+              >
+                Sair
+              </button>
+            </div>
+            <div className="w-px h-6 bg-slate-200" />
+            {/* Admin-only import/export buttons */}
+            {isAdmin && (<>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { jsonFileInputRef.current?.click(); }} disabled={isLoading}>
               <FileJson className="h-4 w-4" />
               Importar JSON
@@ -1404,6 +1439,7 @@ export default function SalesOpportunityDashboard() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </>)}
           </div>
         </div>
       </header>
@@ -1946,6 +1982,7 @@ export default function SalesOpportunityDashboard() {
                   <CardTitle className="text-lg font-semibold text-slate-700">
                     Lista de Oportunidades ({oppFilteredData.length} registros)
                   </CardTitle>
+                  {isAdmin && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1955,6 +1992,7 @@ export default function SalesOpportunityDashboard() {
                   >
                     <Settings className="h-4 w-4 text-slate-600" />
                   </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
