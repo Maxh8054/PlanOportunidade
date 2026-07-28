@@ -31,8 +31,11 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone output
+# Copy standalone output first (has Next.js server + minimal node_modules)
 COPY --from=builder /app/.next/standalone ./
+
+# Overlay ALL node_modules to ensure all prisma dependencies are available
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy static files
 COPY --from=builder /app/.next/static ./.next/static
@@ -42,11 +45,6 @@ COPY --from=builder /app/public ./public
 
 # Copy prisma schema (PostgreSQL version)
 COPY --from=builder /app/prisma ./prisma
-
-# Copy Prisma client modules + CLI (with engines) for runtime db push
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 # Set permissions
 RUN chown -R nextjs:nodejs /app
@@ -58,5 +56,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Use local prisma binary (NOT bunx) to avoid re-downloading at runtime
+# Use local prisma binary (NOT bunx) to prevent v7 download at runtime
 CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && bun server.js"]
