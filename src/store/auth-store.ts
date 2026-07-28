@@ -16,7 +16,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  forgotPassword: (email: string) => Promise<{ success: boolean; newPassword?: string; message?: string; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: string }>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -115,6 +115,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         success: true,
         newPassword: json.newPassword,
         message: json.message,
+        requested: json.requested,
+        alreadyRequested: json.alreadyRequested,
       };
     } catch {
       return { success: false, error: 'Erro de conexão com o servidor' };

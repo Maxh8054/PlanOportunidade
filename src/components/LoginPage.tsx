@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Lock, Mail, Eye, EyeOff, LogIn, RotateCcw, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, LogIn, RotateCcw, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 
 export function LoginPage() {
   const { login, forgotPassword } = useAuthStore();
@@ -17,7 +17,7 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string } | null>(null);
+  const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean } | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +57,7 @@ export function LoginPage() {
         <Card className="shadow-lg border-slate-200">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg text-center">
-              {showForgot ? 'Redefinir Senha' : 'Acesse sua conta'}
+              {showForgot ? 'Solicitar Troca de Senha' : 'Acesse sua conta'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -141,27 +141,41 @@ export function LoginPage() {
               /* Forgot Password Form */
               <form onSubmit={handleForgotPassword} className="space-y-4">
                 {forgotResult && (
-                  <div className={`flex items-start gap-2 p-3 rounded-lg border text-sm ${
-                    forgotResult.success && forgotResult.newPassword
-                      ? 'bg-green-50 border-green-200 text-green-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
+                  <div className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${
+                    forgotResult.requested || forgotResult.alreadyRequested
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : forgotResult.success
+                        ? 'bg-green-50 border-green-200 text-green-700'
+                        : 'bg-slate-50 border-slate-200 text-slate-600'
                   }`}>
-                    {forgotResult.success && forgotResult.newPassword ? (
-                      <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    {forgotResult.requested || forgotResult.alreadyRequested ? (
+                      <Clock className="w-5 h-5 mt-0.5 shrink-0" />
+                    ) : forgotResult.success ? (
+                      <CheckCircle className="w-5 h-5 mt-0.5 shrink-0" />
                     ) : (
-                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
                     )}
                     <div>
-                      {forgotResult.success && forgotResult.newPassword ? (
+                      {forgotResult.requested ? (
                         <>
-                          <p className="font-medium">Sua nova senha é:</p>
+                          <p className="font-medium">Solicitação enviada!</p>
+                          <p className="mt-1">Sua solicitação de troca de senha foi enviada ao administrador. Aguarde a aprovação para receber sua nova senha.</p>
+                        </>
+                      ) : forgotResult.alreadyRequested ? (
+                        <>
+                          <p className="font-medium">Solicitação pendente</p>
+                          <p className="mt-1">Você já possui uma solicitação de troca de senha aguardando aprovação. Aguarde o administrador analisar.</p>
+                        </>
+                      ) : forgotResult.success ? (
+                        <>
+                          <p className="font-medium">Nova senha gerada!</p>
                           <p className="text-2xl font-mono font-bold mt-1 tracking-widest text-center py-2 bg-white rounded border">
                             {forgotResult.newPassword}
                           </p>
                           <p className="mt-2 text-xs text-green-600">Use esta senha para fazer login.</p>
                         </>
                       ) : (
-                        <span>{forgotResult.message || forgotResult.error}</span>
+                        <span>{forgotResult.message || forgotResult.error || 'Erro ao processar solicitação.'}</span>
                       )}
                     </div>
                   </div>
@@ -194,7 +208,7 @@ export function LoginPage() {
                   ) : (
                     <>
                       <RotateCcw className="w-4 h-4 mr-2" />
-                      Gerar nova senha
+                      Solicitar Troca de Senha
                     </>
                   )}
                 </Button>

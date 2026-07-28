@@ -24,27 +24,40 @@ export async function POST(request: Request) {
     // Always return same message for security (don't reveal if email exists)
     if (!user) {
       return NextResponse.json({
-        message: 'Se o email estiver cadastrado, uma nova senha será gerada.',
+        message: 'Se o email estiver cadastrado, uma solicitação será enviada ao administrador.',
       });
     }
 
-    // Generate new password
+    // Check if there's already a pending request for this user
+    const existingPending = await db.passwordResetRequest.findFirst({
+      where: {
+        userId: user.id,
+        status: 'pending',
+      },
+    });
+
+    if (existingPending) {
+      return NextResponse.json({
+        message: 'Você já possui uma solicitação pendente. Aguarde o administrador aprovar.',
+        alreadyRequested: true,
+      });
+    }
+
+    // Generate new password and create a pending request
     const newPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await db.user.update({
-      where: { id: user.id },
+    await db.passwordResetRequest.create({
       data: {
-        password: hashedPassword,
-        loginAttempts: 0,
-        lockedUntil: null,
-        sessionToken: null,
+        userId: user.id,
+        newGeneratedPassword: hashedPassword,
+        status: 'pending',
       },
     });
 
     return NextResponse.json({
-      message: 'Senha redefinida com sucesso!',
-      newPassword,
+      message: 'Solicitação enviada! Aguarde o administrador aprovar a troca de senha.',
+      requested: true,
     });
   } catch (error) {
     console.error('Forgot password error:', error);

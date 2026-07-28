@@ -9,7 +9,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 });
     }
 
-    const user = await db.user.findUnique({
+    const user = await db.user.findFirst({
       where: { sessionToken: token },
       select: {
         id: true,

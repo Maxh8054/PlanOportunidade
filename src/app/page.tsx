@@ -67,6 +67,9 @@ import {
   GripVertical,
   History,
   CalendarDays,
+  KeyRound,
+  ShieldCheck,
+  ShieldX,
 } from 'lucide-react';
 import { PasswordModal } from '@/components/PasswordModal';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -170,6 +173,11 @@ export default function SalesOpportunityDashboard() {
   // Column configuration state
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
   const [showColumnConfigModal, setShowColumnConfigModal] = useState(false);
+  const [showPasswordRequests, setShowPasswordRequests] = useState(false);
+  const [passwordRequests, setPasswordRequests] = useState<{ pending: any[]; resolved: any[] }>({ pending: [], resolved: [] });
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+  const [passwordRequestResult, setPasswordRequestResult] = useState<{ success: boolean; message: string; newPassword?: string; userName?: string } | null>(null);
   const [showColumnConfigPassword, setShowColumnConfigPassword] = useState(false);
   const [tempVisibleColumns, setTempVisibleColumns] = useState<string[]>([]);
   const sensors = useSensors(useSensor(PointerSensor));
@@ -1343,6 +1351,52 @@ export default function SalesOpportunityDashboard() {
     );
   }
 
+  // Load password reset requests when admin opens the panel
+  const loadPasswordRequests = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setLoadingRequests(true);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPasswordRequests(data);
+      }
+    } catch (e) {
+      console.error('Failed to load password requests:', e);
+    }
+    setLoadingRequests(false);
+  };
+
+  const handlePasswordRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    setProcessingRequestId(requestId);
+    setPasswordRequestResult(null);
+    try {
+      const res = await fetch('/api/auth/password-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ requestId, action }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setPasswordRequestResult({ success: true, message: json.message, newPassword: json.newPassword, userName: json.userName });
+        await loadPasswordRequests(); // refresh list
+      } else {
+        setPasswordRequestResult({ success: false, message: json.error || 'Erro ao processar' });
+      }
+    } catch (e) {
+      setPasswordRequestResult({ success: false, message: 'Erro de conexão' });
+    }
+    setProcessingRequestId(null);
+  };
+
   if (!isAuthenticated || !user) {
     return <LoginPage />;
   }
@@ -1439,6 +1493,20 @@ export default function SalesOpportunityDashboard() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 relative"
+              onClick={() => { setShowPasswordRequests(true); setPasswordRequestResult(null); loadPasswordRequests(); }}
+            >
+              <KeyRound className="h-4 w-4" />
+              Senhas
+              {passwordRequests.pending.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                  {passwordRequests.pending.length}
+                </span>
+              )}
+            </Button>
             </>)}
           </div>
         </div>
@@ -2405,6 +2473,147 @@ export default function SalesOpportunityDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Admin: Password Reset Requests Dialog */}
+      {isAdmin && (
+      <Dialog open={showPasswordRequests} onOpenChange={(open) => { setShowPasswordRequests(open); if (open) { setPasswordRequestResult(null); loadPasswordRequests(); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              Solicitações de Troca de Senha
+            </DialogTitle>
+            <DialogDescription>
+              Aprove ou rejeite as solicitações de troca de senha dos usuários.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Result message */}
+          {passwordRequestResult && (
+            <div className={`flex items-start gap-2 p-3 rounded-lg border text-sm ${
+              passwordRequestResult.success
+                ? 'bg-green-50 border-green-200 text-green-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              {passwordRequestResult.success ? <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" /> : <X className="w-4 h-4 mt-0.5 shrink-0" />}
+              <div>
+                <p className="font-medium">{passwordRequestResult.message}</p>
+                {passwordRequestResult.success && passwordRequestResult.newPassword && (
+                  <div className="mt-2 p-2 bg-white rounded border text-center">
+                    <p className="text-xs text-slate-500">Nova senha de {passwordRequestResult.userName}:</p>
+                    <p className="text-2xl font-mono font-bold tracking-widest mt-1">{passwordRequestResult.newPassword}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Pending requests */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-500" />
+              Pendentes ({passwordRequests.pending.length})
+            </h3>
+            {loadingRequests ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              </div>
+            ) : passwordRequests.pending.length === 0 ? (
+              <div className="text-center py-6 text-sm text-slate-400 bg-slate-50 rounded-lg">
+                Nenhuma solicitação pendente
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {passwordRequests.pending.map((req: any) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-slate-800 truncate">{req.userName}</p>
+                      <p className="text-xs text-slate-500 truncate">{req.userEmail}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(req.createdAt).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 ml-3 shrink-0">
+                      <Button
+                        size="sm"
+                        className="gap-1 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={processingRequestId === req.id}
+                        onClick={() => handlePasswordRequestAction(req.id, 'approve')}
+                      >
+                        {processingRequestId === req.id ? (
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        )}
+                        Aprovar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 text-red-600 border-red-200 hover:bg-red-50"
+                        disabled={processingRequestId === req.id}
+                        onClick={() => handlePasswordRequestAction(req.id, 'reject')}
+                      >
+                        <ShieldX className="h-3.5 w-3.5" />
+                        Rejeitar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Resolved history */}
+          <div className="mt-4 pt-4 border-t">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <History className="h-4 w-4 text-slate-400" />
+              Histórico
+            </h3>
+            {passwordRequests.resolved.length === 0 ? (
+              <div className="text-center py-4 text-sm text-slate-400">
+                Nenhum histórico
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {passwordRequests.resolved.map((req: any) => (
+                  <div key={req.id} className={`flex items-center justify-between p-2.5 rounded-lg border text-sm ${
+                    req.status === 'approved'
+                      ? 'bg-green-50 border-green-100'
+                      : 'bg-slate-50 border-slate-100'
+                  }`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">{req.userName}</span>
+                        <Badge variant={req.status === 'approved' ? 'default' : 'secondary'} className={
+                          req.status === 'approved'
+                            ? 'bg-green-100 text-green-700 text-[10px] px-1.5'
+                            : 'bg-slate-100 text-slate-500 text-[10px] px-1.5'
+                        }>
+                          {req.status === 'approved' ? 'Aprovado' : 'Rejeitado'}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        por {req.resolvedByName} em {req.resolvedAt ? new Date(req.resolvedAt).toLocaleString('pt-BR') : '-'}
+                      </p>
+                    </div>
+                    {req.status === 'approved' && req.newPassword && (
+                      <span className="font-mono font-bold text-green-700 tracking-wider shrink-0 ml-2">
+                        {req.newPassword}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPasswordRequests(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      )}
     </div>
   );
 }

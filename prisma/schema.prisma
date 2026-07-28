@@ -18,6 +18,7 @@ model User {
   sessionToken  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  passwordResetRequests PasswordResetRequest[]
 }
 
 model Post {
@@ -28,6 +29,18 @@ model Post {
   authorId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PasswordResetRequest {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id])
+  status               String    @default("pending") // pending, approved, rejected
+  newGeneratedPassword String
+  reason               String?
+  createdAt            DateTime  @default(now())
+  resolvedAt           DateTime?
+  resolvedBy           String?
 }
 
 model DashboardData {
