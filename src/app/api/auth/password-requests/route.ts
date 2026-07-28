@@ -9,7 +9,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const admin = await db.user.findUnique({
+    const admin = await db.user.findFirst({
       where: { sessionToken: token },
       select: { id: true, role: true },
     });
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const admin = await db.user.findUnique({
+    const admin = await db.user.findFirst({
       where: { sessionToken: token },
       select: { id: true, role: true, name: true },
     });
