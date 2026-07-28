@@ -53,3 +53,14 @@ model DashboardData {
   excelHeadersByOrigin  String   @default("{}")
   updatedAt             DateTime @updatedAt
 }
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  userId    String?
+  userEmail String?
+  userName  String?
+  ip        String?
+  details   String?
+  createdAt DateTime @default(now())
+}

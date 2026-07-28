@@ -60,5 +60,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Use local prisma binary (NOT bunx) to prevent v7 download at runtime
-# Run db push, then seed users, then start server
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && bun prisma/seed.ts && bun server.js"]
+# Run db push (safe mode — will REFUSE destructive changes), then seed users, then start server
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push && bun prisma/seed.ts && bun server.js"]

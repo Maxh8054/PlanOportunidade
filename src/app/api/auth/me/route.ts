@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionToken, clearSessionCookie, validateSession } from '@/lib/auth';
+import { auditLog } from '@/lib/audit-log';
 
 export async function GET() {
   try {
@@ -28,9 +29,24 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const token = await getSessionToken();
+
+    // Get user info before clearing session for audit
+    let userName: string | null = null;
+    let userEmail: string | null = null;
+    let userId: string | null = null;
+
+    if (token) {
+      const user = await validateSession(token);
+      if (user) {
+        userName = user.name;
+        userEmail = user.email;
+        userId = user.id;
+      }
+    }
+
     if (!token) {
       return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 });
     }
@@ -40,6 +56,8 @@ export async function POST() {
       where: { sessionToken: token },
       data: { sessionToken: null, tokenExpiresAt: null },
     });
+
+    auditLog({ action: 'logout', userId, userEmail, userName });
 
     return NextResponse.json({ success: true }, {
       headers: clearSessionCookie(),

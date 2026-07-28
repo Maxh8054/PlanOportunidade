@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { validatePassword, isCommonPassword } from '@/lib/password-strength';
+import { auditLog } from '@/lib/audit-log';
 
 const FORGOT_RATE_MAX = 3;              // 3 requests per IP per 15 min
 const FORGOT_RATE_WINDOW = 15 * 60 * 1000;
-const MIN_PASSWORD_LENGTH = 8;
 
 export async function POST(request: Request) {
   try {
@@ -28,11 +29,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
     }
 
-    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
-      return NextResponse.json(
-        { error: `A nova senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres` },
-        { status: 400 },
-      );
+    if (!newPassword) {
+      return NextResponse.json({ error: 'Nova senha é obrigatória' }, { status: 400 });
+    }
+
+    // ── Password strength validation ───────────────────────────
+    const validation = validatePassword(newPassword);
+    if (!validation.valid) {
+      return NextResponse.json({
+        error: 'Senha fraca. Requisitos: ' + validation.errors.join(', '),
+        validation,
+      }, { status: 400 });
+    }
+
+    // Block common passwords
+    if (isCommonPassword(newPassword)) {
+      return NextResponse.json({
+        error: 'Esta senha é muito comum. Escolha uma senha mais segura.',
+      }, { status: 400 });
     }
 
     // Basic email format validation
@@ -44,6 +58,7 @@ export async function POST(request: Request) {
 
     // Always return same message for security (don't reveal if email exists)
     if (!user) {
+      auditLog({ action: 'password_request', userEmail: email, ip, details: 'User not found' });
       return NextResponse.json({
         message: 'Se o email estiver cadastrado, uma solicitação será enviada ao administrador.',
       });
@@ -72,6 +87,8 @@ export async function POST(request: Request) {
         status: 'pending',
       },
     });
+
+    auditLog({ action: 'password_request', userId: user.id, userEmail: user.email, userName: user.name, ip });
 
     return NextResponse.json({
       message: 'Solicitação enviada! Aguarde o administrador aprovar a troca de senha.',

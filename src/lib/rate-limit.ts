@@ -1,11 +1,17 @@
 // In-memory rate limiter (persists per Node.js process lifetime)
 const store = new Map<string, { count: number; resetTime: number }>();
 
+// Track failed login IPs across different accounts (brute-force global detection)
+const failedLoginByIp = new Map<string, { attempts: number; resetTime: number; emails: Set<string> }>();
+
 // Cleanup stale entries every 10 minutes to prevent memory leaks
 setInterval(() => {
   const now = Date.now();
   for (const [key, record] of store) {
     if (now >= record.resetTime) store.delete(key);
+  }
+  for (const [key, record] of failedLoginByIp) {
+    if (now >= record.resetTime) failedLoginByIp.delete(key);
   }
 }, 10 * 60 * 1000);
 
@@ -37,6 +43,41 @@ export function rateLimit(
   // Under limit — increment
   record.count++;
   return { success: true, remaining: maxRequests - record.count, resetTime: record.resetTime };
+}
+
+// ── Global brute-force detection ──────────────────────────────────
+// If an IP fails login for 5+ DIFFERENT accounts in 15 minutes, block it
+
+const BRUTE_FORCE_MAX_ACCOUNTS = 5;
+const BRUTE_FORCE_WINDOW = 15 * 60 * 1000;
+
+export function trackFailedLogin(ip: string, email: string): { blocked: boolean; resetTime: number } {
+  const now = Date.now();
+  const record = failedLoginByIp.get(ip);
+
+  if (!record || now >= record.resetTime) {
+    failedLoginByIp.set(ip, { attempts: 1, resetTime: now + BRUTE_FORCE_WINDOW, emails: new Set([email]) });
+    return { blocked: false, resetTime: now + BRUTE_FORCE_WINDOW };
+  }
+
+  record.emails.add(email);
+  record.attempts = record.emails.size;
+
+  if (record.emails.size >= BRUTE_FORCE_MAX_ACCOUNTS) {
+    return { blocked: true, resetTime: record.resetTime };
+  }
+
+  return { blocked: false, resetTime: record.resetTime };
+}
+
+export function isIpBlockedForBruteForce(ip: string): boolean {
+  const record = failedLoginByIp.get(ip);
+  if (!record) return false;
+  if (Date.now() >= record.resetTime) {
+    failedLoginByIp.delete(ip);
+    return false;
+  }
+  return record.emails.size >= BRUTE_FORCE_MAX_ACCOUNTS;
 }
 
 export function getClientIp(request: Request): string {

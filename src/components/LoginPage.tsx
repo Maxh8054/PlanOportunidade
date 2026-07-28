@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuthStore } from '@/store/auth-store';
+import { validatePassword } from '@/lib/password-strength';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Lock, Mail, Eye, EyeOff, LogIn, RotateCcw, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, LogIn, RotateCcw, AlertTriangle, CheckCircle, Clock, Check } from 'lucide-react';
 
 export function LoginPage() {
   const { login, forgotPassword } = useAuthStore();
@@ -19,7 +20,13 @@ export function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [newDesiredPassword, setNewDesiredPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean } | null>(null);
+  const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean; validation?: { errors: string[] } } | null>(null);
+
+  // Real-time password strength validation
+  const passwordValidation = useMemo(() => {
+    if (!newDesiredPassword) return null;
+    return validatePassword(newDesiredPassword);
+  }, [newDesiredPassword]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,8 +45,10 @@ export function LoginPage() {
     e.preventDefault();
     setForgotResult(null);
 
-    if (newDesiredPassword.length < 8) {
-      setForgotResult({ success: false, error: 'A nova senha deve ter pelo menos 8 caracteres.' });
+    // Frontend validation
+    const validation = validatePassword(newDesiredPassword);
+    if (!validation.valid) {
+      setForgotResult({ success: false, error: 'Requisitos: ' + validation.errors.join(', '), validation });
       return;
     }
 
@@ -56,6 +65,25 @@ export function LoginPage() {
     setForgotResult(null);
     setNewDesiredPassword('');
   };
+
+  // Password strength color
+  const strengthColor = passwordValidation
+    ? passwordValidation.valid
+      ? 'text-emerald-600'
+      : passwordValidation.score >= 3
+        ? 'text-amber-600'
+        : 'text-red-600'
+    : '';
+
+  const strengthLabel = passwordValidation
+    ? passwordValidation.valid
+      ? 'Forte ✓'
+      : passwordValidation.score >= 3
+        ? 'Média'
+        : passwordValidation.score >= 1
+          ? 'Fraca'
+          : ''
+    : '';
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -212,12 +240,11 @@ export function LoginPage() {
                     <Input
                       id="new-password"
                       type={showNewPassword ? 'text' : 'password'}
-                      placeholder="Digite a nova senha desejada"
+                      placeholder="Mín. 8 chars: Aa1@xxxx"
                       value={newDesiredPassword}
                       onChange={(e) => setNewDesiredPassword(e.target.value)}
                       className="pl-10 pr-10"
                       required
-                      minLength={8}
                       disabled={isLoading}
                     />
                     <button
@@ -228,12 +255,42 @@ export function LoginPage() {
                       {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+
+                  {/* Password strength indicator */}
+                  {newDesiredPassword && passwordValidation && (
+                    <div className="space-y-2 mt-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Força da senha:</span>
+                        <span className={`font-medium ${strengthColor}`}>{strengthLabel}</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-1">
+                        {[
+                          { test: newDesiredPassword.length >= 8, label: '8+ caracteres' },
+                          { test: /[A-Z]/.test(newDesiredPassword), label: '1 maiúscula (A-Z)' },
+                          { test: /[a-z]/.test(newDesiredPassword), label: '1 minúscula (a-z)' },
+                          { test: /[0-9]/.test(newDesiredPassword), label: '1 número (0-9)' },
+                          { test: /[!@#$%^&*()_+\-=\[\]{};\'":\\|,.<>\/?`~]/.test(newDesiredPassword), label: '1 especial (!@#$...)' },
+                        ].map((rule) => (
+                          <div key={rule.label} className="flex items-center gap-2 text-xs">
+                            {rule.test ? (
+                              <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                            ) : (
+                              <div className="w-3 h-3 rounded-full border border-slate-300 shrink-0" />
+                            )}
+                            <span className={rule.test ? 'text-emerald-600' : 'text-slate-400'}>
+                              {rule.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <Button
                   type="submit"
                   className="w-full bg-slate-800 hover:bg-slate-700 text-white"
-                  disabled={isLoading || newDesiredPassword.length < 8}
+                  disabled={isLoading || (newDesiredPassword.length > 0 && !passwordValidation?.valid)}
                 >
                   {isLoading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

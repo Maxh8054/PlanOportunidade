@@ -1,6 +1,46 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionToken, requireAdmin, unauthorized, forbidden } from '@/lib/auth';
+import { getClientIp } from '@/lib/rate-limit';
+import { auditLog } from '@/lib/audit-log';
+
+// Auto-expire pending requests older than 7 days
+const REQUEST_EXPIRY_DAYS = 7;
+
+async function expireOldPendingRequests() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - REQUEST_EXPIRY_DAYS);
+
+  const expired = await db.passwordResetRequest.findMany({
+    where: {
+      status: 'pending',
+      createdAt: { lt: cutoff },
+    },
+    include: { user: { select: { name: true, email: true } } },
+  });
+
+  for (const req of expired) {
+    await db.passwordResetRequest.update({
+      where: { id: req.id },
+      data: {
+        status: 'rejected',
+        newGeneratedPassword: '',
+        desiredPassword: '',
+        resolvedAt: new Date(),
+        resolvedBy: 'system-expiry',
+      },
+    });
+    auditLog({
+      action: 'password_request_expired',
+      userId: req.userId,
+      userEmail: req.user.email,
+      userName: req.user.name,
+      details: `Auto-expired after ${REQUEST_EXPIRY_DAYS} days`,
+    });
+  }
+
+  return expired.length;
+}
 
 // GET - List password reset requests + locked users (admin only)
 export async function GET() {
@@ -8,6 +48,9 @@ export async function GET() {
     const token = await getSessionToken();
     const admin = await requireAdmin(token);
     if (!admin) return forbidden();
+
+    // Auto-expire old pending requests
+    const expiredCount = await expireOldPendingRequests();
 
     const requests = await db.passwordResetRequest.findMany({
       where: { status: 'pending' },
@@ -77,6 +120,7 @@ export async function POST(request: Request) {
     const admin = await requireAdmin(token);
     if (!admin) return forbidden();
 
+    const ip = getClientIp(request);
     const body = await request.json();
     const { action } = body;
 
@@ -91,6 +135,15 @@ export async function POST(request: Request) {
       await db.user.update({
         where: { id: userId },
         data: { loginAttempts: 0, lockedUntil: null, sessionToken: null, tokenExpiresAt: null },
+      });
+
+      auditLog({
+        action: 'user_unlocked',
+        userId: admin.id,
+        userEmail: admin.email,
+        userName: admin.name,
+        ip,
+        details: `Unlocked user ${user.name} (${user.email})`,
       });
 
       return NextResponse.json({ success: true, message: `Login de ${user.name} desbloqueado!` });
@@ -146,8 +199,18 @@ export async function POST(request: Request) {
         },
       });
 
-      const userName = (await db.user.findUnique({ where: { id: resetRequest.userId }, select: { name: true } }))?.name;
-      return NextResponse.json({ success: true, message: 'Senha atualizada com sucesso!', userName });
+      const userName = (await db.user.findUnique({ where: { id: resetRequest.userId }, select: { name: true, email: true } }))!;
+
+      auditLog({
+        action: 'password_approved',
+        userId: admin.id,
+        userEmail: admin.email,
+        userName: admin.name,
+        ip,
+        details: `Approved password change for ${userName?.name} (${userName?.email})`,
+      });
+
+      return NextResponse.json({ success: true, message: 'Senha atualizada com sucesso!', userName: userName?.name });
     } else {
       await db.passwordResetRequest.update({
         where: { id: requestId },
@@ -158,6 +221,17 @@ export async function POST(request: Request) {
           resolvedAt: new Date(),
           resolvedBy: admin.id,
         },
+      });
+
+      const userName = (await db.user.findUnique({ where: { id: resetRequest.userId }, select: { name: true, email: true } }));
+
+      auditLog({
+        action: 'password_rejected',
+        userId: admin.id,
+        userEmail: admin.email,
+        userName: admin.name,
+        ip,
+        details: `Rejected password change for ${userName?.name} (${userName?.email})`,
       });
 
       return NextResponse.json({ success: true, message: 'Solicitação rejeitada.' });
