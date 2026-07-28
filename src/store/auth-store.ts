@@ -16,7 +16,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  forgotPassword: (email: string, newPassword?: string, currentPassword?: string) => Promise<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean }>;
+  forgotPassword: (email: string, newPassword?: string) => Promise<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean }>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -98,12 +98,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  forgotPassword: async (email: string, newPassword?: string, currentPassword?: string) => {
+  forgotPassword: async (email: string, newPassword?: string) => {
     try {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, currentPassword, newPassword }),
+        body: JSON.stringify({ email, newPassword }),
       });
       const json = await res.json();
 
