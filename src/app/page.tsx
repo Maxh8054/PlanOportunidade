@@ -2640,12 +2640,8 @@ export default function SalesOpportunityDashboard() {
                         </Button>
                       </div>
                     </div>
-                    {/* Password details */}
-                    <div className="mt-2 pt-2 border-t border-amber-200 grid grid-cols-2 gap-2">
-                      <div className="bg-white rounded p-2">
-                        <p className="text-[10px] text-slate-400 uppercase tracking-wide">Senha Atual</p>
-                        <p className="text-sm font-mono font-semibold text-slate-700 break-all">{req.oldPassword || '-'}</p>
-                      </div>
+                    {/* New password desired */}
+                    <div className="mt-2 pt-2 border-t border-amber-200">
                       <div className="bg-white rounded p-2">
                         <p className="text-[10px] text-slate-400 uppercase tracking-wide">Nova Senha Desejada</p>
                         <p className="text-sm font-mono font-semibold text-green-700 break-all">{req.desiredPassword || '-'}</p>
@@ -2697,16 +2693,12 @@ export default function SalesOpportunityDashboard() {
                         </span>
                       ) : null}
                     </div>
-                    {/* Show password change details in history */}
-                    {req.status === 'approved' && (req.oldPassword || req.desiredPassword) && (
-                      <div className="mt-1.5 pt-1.5 border-t border-green-200 grid grid-cols-2 gap-2">
+                    {/* Show new password in history for approved requests */}
+                    {req.status === 'approved' && req.desiredPassword && (
+                      <div className="mt-1.5 pt-1.5 border-t border-green-200">
                         <div className="rounded p-1.5 bg-green-100/50">
-                          <p className="text-[9px] text-slate-400 uppercase">Antes</p>
-                          <p className="text-xs font-mono text-slate-600">{req.oldPassword || '-'}</p>
-                        </div>
-                        <div className="rounded p-1.5 bg-green-100/50">
-                          <p className="text-[9px] text-slate-400 uppercase">Depois</p>
-                          <p className="text-xs font-mono text-green-700">{req.desiredPassword || '-'}</p>
+                          <p className="text-[9px] text-slate-400 uppercase">Nova Senha</p>
+                          <p className="text-xs font-mono text-green-700">{req.desiredPassword}</p>
                         </div>
                       </div>
                     )}

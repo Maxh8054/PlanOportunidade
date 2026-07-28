@@ -4,14 +4,10 @@ import bcrypt from 'bcryptjs';
 
 export async function POST(request: Request) {
   try {
-    const { email, currentPassword, newPassword } = await request.json();
+    const { email, newPassword } = await request.json();
 
     if (!email) {
       return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
-    }
-
-    if (!currentPassword || currentPassword.length < 1) {
-      return NextResponse.json({ error: 'Senha atual é obrigatória' }, { status: 400 });
     }
 
     if (!newPassword || newPassword.length < 3) {
@@ -25,15 +21,6 @@ export async function POST(request: Request) {
       return NextResponse.json({
         message: 'Se o email estiver cadastrado, uma solicitação será enviada ao administrador.',
       });
-    }
-
-    // Verify current password
-    const isValidCurrent = await bcrypt.compare(currentPassword, user.password);
-    if (!isValidCurrent) {
-      return NextResponse.json({
-        error: 'Senha atual incorreta',
-        success: false,
-      }, { status: 401 });
     }
 
     // Check if there's already a pending request for this user
@@ -58,7 +45,6 @@ export async function POST(request: Request) {
       data: {
         userId: user.id,
         newGeneratedPassword: hashedPassword,
-        oldPassword: currentPassword,       // plaintext for admin viewing
         desiredPassword: newPassword,       // plaintext for admin viewing
         status: 'pending',
       },

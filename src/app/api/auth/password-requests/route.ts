@@ -70,7 +70,6 @@ export async function GET(request: Request) {
         userId: r.userId,
         userName: r.user.name,
         userEmail: r.user.email,
-        oldPassword: r.oldPassword,
         desiredPassword: r.desiredPassword,
         createdAt: r.createdAt,
       })),
@@ -80,7 +79,6 @@ export async function GET(request: Request) {
         userName: r.user.name,
         userEmail: r.user.email,
         status: r.status,
-        oldPassword: r.oldPassword,
         desiredPassword: r.desiredPassword,
         createdAt: r.createdAt,
         resolvedAt: r.resolvedAt,
@@ -209,7 +207,6 @@ export async function POST(request: Request) {
         data: {
           status: 'rejected',
           newGeneratedPassword: '',
-          oldPassword: '',
           desiredPassword: '',
           resolvedAt: new Date(),
           resolvedBy: admin.id,

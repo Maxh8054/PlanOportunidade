@@ -17,9 +17,7 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newDesiredPassword, setNewDesiredPassword] = useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [forgotResult, setForgotResult] = useState<{ success: boolean; newPassword?: string; message?: string; error?: string; requested?: boolean; alreadyRequested?: boolean } | null>(null);
 
@@ -40,11 +38,6 @@ export function LoginPage() {
     e.preventDefault();
     setForgotResult(null);
 
-    if (currentPassword.length < 1) {
-      setForgotResult({ success: false, error: 'A senha atual é obrigatória.' });
-      return;
-    }
-
     if (newDesiredPassword.length < 3) {
       setForgotResult({ success: false, error: 'A nova senha deve ter pelo menos 3 caracteres.' });
       return;
@@ -52,7 +45,7 @@ export function LoginPage() {
 
     setIsLoading(true);
 
-    const result = await forgotPassword(forgotEmail, newDesiredPassword, currentPassword);
+    const result = await forgotPassword(forgotEmail, newDesiredPassword);
     setForgotResult(result);
     setIsLoading(false);
   };
@@ -62,7 +55,6 @@ export function LoginPage() {
     setError('');
     setForgotResult(null);
     setNewDesiredPassword('');
-    setCurrentPassword('');
   };
 
   return (
@@ -214,30 +206,6 @@ export function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="current-password">Senha atual</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      id="current-password"
-                      type={showCurrentPassword ? 'text' : 'password'}
-                      placeholder="Digite sua senha atual"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                      disabled={isLoading}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="new-password">Nova senha desejada</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -265,7 +233,7 @@ export function LoginPage() {
                 <Button
                   type="submit"
                   className="w-full bg-slate-800 hover:bg-slate-700 text-white"
-                  disabled={isLoading || currentPassword.length < 1 || newDesiredPassword.length < 3}
+                  disabled={isLoading || newDesiredPassword.length < 3}
                 >
                   {isLoading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -280,7 +248,7 @@ export function LoginPage() {
                 <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => { setShowForgot(false); setForgotResult(null); setError(''); setNewDesiredPassword(''); setCurrentPassword(''); }}
+                    onClick={() => { setShowForgot(false); setForgotResult(null); setError(''); setNewDesiredPassword(''); }}
                     className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2"
                   >
                     Voltar ao login
