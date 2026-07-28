@@ -12,15 +12,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client
+# Use PostgreSQL schema for production build
+RUN cp prisma/schema.render.prisma prisma/schema.prisma
+
+# Generate Prisma client for PostgreSQL
 RUN bunx prisma generate
-
-# Set DATABASE_URL for build
-ENV DATABASE_URL="file:/app/db/custom.db"
-
-# Create db directory and push schema
-RUN mkdir -p /app/db
-RUN bun run db:push
 
 # Build Next.js
 RUN bun run build
@@ -30,7 +26,6 @@ FROM oven/bun:1-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV DATABASE_URL="file:/app/db/custom.db"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -45,15 +40,12 @@ COPY --from=builder /app/.next/static ./.next/static
 # Copy public directory
 COPY --from=builder /app/public ./public
 
-# Copy prisma schema
+# Copy prisma schema (PostgreSQL version)
 COPY --from=builder /app/prisma ./prisma
 
 # Copy Prisma client modules
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
-# Copy db directory (with schema already pushed)
-COPY --from=builder /app/db ./db
 
 # Set permissions
 RUN chown -R nextjs:nodejs /app
@@ -65,4 +57,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["bun", "server.js"]
+# Push schema and start server
+CMD ["sh", "-c", "bunx prisma db push --accept-data-loss && bun server.js"]

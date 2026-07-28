@@ -292,9 +292,34 @@ export default function SalesOpportunityDashboard() {
   // Column config is now loaded based on origin in the useEffect above
 
   // Save to API + localStorage whenever data changes
+  const saveDataToServer = async (records: OpportunityRecord[], headers: Record<string, { key: string; label: string }[]>) => {
+    if (records.length === 0) return;
+    setIsSyncing(true);
+    try {
+      const serialized = serializeData(records);
+      const res = await fetch('/api/dashboard-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: serialized, totalRecords: records.length, excelHeadersByOrigin: headers }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setLastSync(new Date().toLocaleString('pt-BR'));
+      } else {
+        setLastSync('Erro ao salvar: ' + (json.error || 'desconhecido'));
+        console.error('Sync failed:', json.error);
+      }
+    } catch (err) {
+      setLastSync('Erro ao conectar ao servidor');
+      console.error('Sync failed:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     if (data.length === 0) return;
-    // Always save to localStorage
+    // Save to localStorage
     const exportData = {
       exportDate: new Date().toISOString(),
       totalRecords: data.length,
@@ -302,21 +327,9 @@ export default function SalesOpportunityDashboard() {
       excelHeadersByOrigin,
     };
     localStorage.setItem('dashboard_oportunidades_data', JSON.stringify(exportData));
-    // Try to save to API (don't await, fire and forget)
-    fetch('/api/dashboard-data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: serializeData(data), totalRecords: data.length, excelHeadersByOrigin }),
-    }).then(res => res.json()).then(json => {
-      if (json.success) {
-        setLastSync(new Date().toLocaleString('pt-BR'));
-      } else {
-        console.error('Sync failed:', json.error);
-      }
-    }).catch(err => {
-      console.error('Sync failed:', err);
-    });
-  }, [data]);
+    // Save to server API
+    saveDataToServer(data, excelHeadersByOrigin);
+  }, [data, excelHeadersByOrigin]);
 
   // Overview Filters
   const [empresaFilter, setEmpresaFilter] = useState<string[]>([]);
