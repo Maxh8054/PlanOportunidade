@@ -183,203 +183,210 @@ class EmailSenderApp:
     TEXT_LIGHT = "#555"
     ADMIN_COLOR = "#dc2626"
     VISITOR_COLOR = "#6b7280"
-    SUCCESS_BG = "#dcfce7"
-    ERROR_BG = "#fee2e2"
-    SENDING_BG = "#fef9c3"
+    CHECKED_BG = "#dcfce7"
+    UNCHECKED_BG = "#ffffff"
 
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Zamine Brasil - Envio de Credenciais")
-        self.root.geometry("780x720")
+        self.root.geometry("800x700")
         self.root.configure(bg=self.BG)
-        self.root.minsize(700, 650)
+        self.root.minsize(750, 600)
         self.sending = False
-        self.checkboxes: dict[int, tk.BooleanVar] = {}
-        self.status_labels: dict[int, ttk.Label] = {}
+        self.tree_vars: dict[str, tk.BooleanVar] = {}
+        self.tree_items: dict[str, str] = {}  # email -> iid
         self._build_ui()
 
     # ---------- Layout ----------
     def _build_ui(self):
+        # Container principal: tudo entre header e footer e fixo no fundo
+        main_container = tk.Frame(self.root, bg=self.BG)
+        main_container.pack(fill=tk.BOTH, expand=True)
+
         # ---- HEADER ----
-        header = tk.Frame(self.root, bg=self.PRIMARY, height=80)
+        header = tk.Frame(main_container, bg=self.PRIMARY, height=70)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
-        tk.Label(header, text="Zamine Brasil", font=("Segoe UI", 22, "bold"),
-                 fg=self.WHITE, bg=self.PRIMARY).pack(pady=(12, 0))
-        tk.Label(header, text="Envio de Credenciais por Email", font=("Segoe UI", 12),
-                 fg="#bbf7d0", bg=self.PRIMARY).pack()
+        tk.Label(header, text="  Zamine Brasil", font=("Segoe UI", 20, "bold"),
+                 fg=self.WHITE, bg=self.PRIMARY).pack(side=tk.LEFT, padx=20, pady=(16, 0))
 
         # ---- SMTP CONFIG ----
-        smtp_frame = tk.LabelFrame(self.root, text="  Configuracao SMTP  ",
-                                   font=("Segoe UI", 11, "bold"), fg=self.PRIMARY_DARK,
-                                   bg=self.WHITE, padx=16, pady=12, bd=2, relief=tk.GROOVE)
-        smtp_frame.pack(fill=tk.X, padx=20, pady=(16, 8))
+        smtp_frame = tk.LabelFrame(main_container, text="  Configuracao SMTP  ",
+                                   font=("Segoe UI", 10, "bold"), fg=self.PRIMARY_DARK,
+                                   bg=self.WHITE, padx=14, pady=10, bd=2, relief=tk.GROOVE)
+        smtp_frame.pack(fill=tk.X, padx=16, pady=(12, 6))
 
         grid = tk.Frame(smtp_frame, bg=self.WHITE)
         grid.pack(fill=tk.X)
         grid.columnconfigure(1, weight=1)
 
-        tk.Label(grid, text="Email Remetente:", font=("Segoe UI", 10), bg=self.WHITE,
-                 anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=4)
+        tk.Label(grid, text="Email Remetente:", font=("Segoe UI", 10), bg=self.WHITE).grid(
+            row=0, column=0, sticky="w", padx=(0, 10), pady=3)
         self.sender_email_var = tk.StringVar(value="max-r@zaminebrasil.com")
         tk.Entry(grid, textvariable=self.sender_email_var, font=("Segoe UI", 10),
-                 relief=tk.FLAT, highlightthickness=1, highlightcolor=self.PRIMARY,
-                 highlightbackground="#d1d5db", bd=4).grid(row=0, column=1, sticky="ew", pady=4)
+                 relief=tk.GROOVE, bd=1).grid(row=0, column=1, sticky="ew", pady=3)
 
-        tk.Label(grid, text="Senha / App Password:", font=("Segoe UI", 10), bg=self.WHITE,
-                 anchor="w").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=4)
+        tk.Label(grid, text="Senha / App Password:", font=("Segoe UI", 10), bg=self.WHITE).grid(
+            row=1, column=0, sticky="w", padx=(0, 10), pady=3)
         self.sender_pass_var = tk.StringVar()
-        pass_entry = tk.Entry(grid, textvariable=self.sender_pass_var, font=("Segoe UI", 10),
-                              show="*", relief=tk.FLAT, highlightthickness=1,
-                              highlightcolor=self.PRIMARY, highlightbackground="#d1d5db", bd=4)
-        pass_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        tk.Entry(grid, textvariable=self.sender_pass_var, font=("Segoe UI", 10),
+                 show="*", relief=tk.GROOVE, bd=1).grid(row=1, column=1, sticky="ew", pady=3)
 
-        smtp_info = tk.Label(smtp_frame, text=f"Servidor: {SMTP_SERVER}:{SMTP_PORT}   |   "
-                             f"Para Gmail use App Password: https://myaccount.google.com/apppasswords",
-                             font=("Segoe UI", 9), fg="#6b7280", bg=self.WHITE, anchor="w")
-        smtp_info.pack(fill=tk.X, pady=(8, 0))
+        tk.Label(smtp_frame, text=f"Servidor: {SMTP_SERVER}:{SMTP_PORT}   |   "
+                             f"Gmail App Password: https://myaccount.google.com/apppasswords",
+                 font=("Segoe UI", 8), fg="#9ca3af", bg=self.WHITE, anchor="w").pack(fill=tk.X, pady=(4, 0))
 
         # ---- SELECIONAR USUARIOS ----
-        list_frame = tk.LabelFrame(self.root, text="  Selecionar Destinatarios  ",
-                                   font=("Segoe UI", 11, "bold"), fg=self.PRIMARY_DARK,
-                                   bg=self.WHITE, padx=12, pady=8, bd=2, relief=tk.GROOVE)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=8)
+        list_frame = tk.LabelFrame(main_container, text="  Selecionar Destinatarios (clique na linha para marcar/desmarcar)  ",
+                                   font=("Segoe UI", 10, "bold"), fg=self.PRIMARY_DARK,
+                                   bg=self.WHITE, padx=10, pady=8, bd=2, relief=tk.GROOVE)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=6)
 
-        # botoes selecionar todos
+        # Botoes de filtro
         btn_bar = tk.Frame(list_frame, bg=self.WHITE)
         btn_bar.pack(fill=tk.X, pady=(0, 6))
 
-        btn_style = {"font": ("Segoe UI", 9, "bold"), "relief": tk.FLAT, "bd": 0,
-                      "padx": 12, "pady": 4, "cursor": "hand2"}
-        tk.Button(btn_bar, text="Selecionar Todos", bg="#dcfce7", fg=self.PRIMARY_DARK,
-                  activebackground="#bbf7d0", command=self._select_all, **btn_style).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Button(btn_bar, text="Desmarcar Todos", bg="#fee2e2", fg="#991b1b",
-                  activebackground="#fecaca", command=self._deselect_all, **btn_style).pack(side=tk.LEFT, padx=(0, 6))
+        btn_kw = {"font": ("Segoe UI", 9, "bold"), "relief": tk.GROOVE, "bd": 1,
+                  "padx": 10, "pady": 3, "cursor": "hand2"}
+        tk.Button(btn_bar, text="Todos", bg="#dcfce7", fg=self.PRIMARY_DARK,
+                  activebackground="#bbf7d0", command=self._select_all, **btn_kw).pack(side=tk.LEFT, padx=(0, 4))
+        tk.Button(btn_bar, text="Nenhum", bg="#fee2e2", fg="#991b1b",
+                  activebackground="#fecaca", command=self._deselect_all, **btn_kw).pack(side=tk.LEFT, padx=(0, 4))
         tk.Button(btn_bar, text="Admins", bg="#fef2f2", fg=self.ADMIN_COLOR,
-                  activebackground="#fee2e2", command=self._select_admins, **btn_style).pack(side=tk.LEFT, padx=(0, 6))
+                  activebackground="#fee2e2", command=self._select_admins, **btn_kw).pack(side=tk.LEFT, padx=(0, 4))
         tk.Button(btn_bar, text="Usuarios", bg="#f0fdf4", fg=self.PRIMARY_DARK,
-                  activebackground="#dcfce7", command=self._select_users, **btn_style).pack(side=tk.LEFT, padx=(0, 6))
+                  activebackground="#dcfce7", command=self._select_users, **btn_kw).pack(side=tk.LEFT, padx=(0, 4))
 
         self.selected_count_var = tk.StringVar(value=f"Selecionados: 0 / {len(USERS)}")
         tk.Label(btn_bar, textvariable=self.selected_count_var, font=("Segoe UI", 9, "bold"),
                  fg=self.TEXT_LIGHT, bg=self.WHITE).pack(side=tk.RIGHT)
 
-        # Treeview com checkboxes simulados via canvas
-        columns = ("selecionar", "nome", "email", "senha", "nivel", "status")
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="none", height=12)
+        # Treeview
+        columns = ("check", "nome", "email", "senha", "nivel", "status")
+        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings",
+                                 selectmode="none", height=10)
 
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Treeview", font=("Segoe UI", 10), rowheight=36, background=self.WHITE,
-                         fieldbackground=self.WHITE, borderwidth=0)
-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), background=self.GRAY,
-                         foreground=self.TEXT, borderwidth=1, relief=tk.FLAT)
+        style.configure("Treeview", font=("Segoe UI", 10), rowheight=32,
+                         background=self.WHITE, fieldbackground=self.WHITE, borderwidth=0)
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"),
+                         background=self.GRAY, foreground=self.TEXT,
+                         borderwidth=1, relief=tk.FLAT, padding=6)
         style.map("Treeview", background=[("selected", "#ecfdf5")])
 
-        self.tree.heading("selecionar", text="")
+        self.tree.heading("check", text="[  ]")
         self.tree.heading("nome", text="Nome")
         self.tree.heading("email", text="Email")
         self.tree.heading("senha", text="Senha")
         self.tree.heading("nivel", text="Nivel")
         self.tree.heading("status", text="Status")
 
-        self.tree.column("selecionar", width=45, minwidth=45, anchor="center", stretch=False)
-        self.tree.column("nome", width=180, minwidth=120)
-        self.tree.column("email", width=200, minwidth=140)
-        self.tree.column("senha", width=60, minwidth=50, anchor="center", stretch=False)
-        self.tree.column("nivel", width=100, minwidth=70, anchor="center")
-        self.tree.column("status", width=120, minwidth=90, anchor="center")
+        self.tree.column("check", width=42, minwidth=42, anchor="center", stretch=False)
+        self.tree.column("nome", width=170, minwidth=120)
+        self.tree.column("email", width=190, minwidth=140)
+        self.tree.column("senha", width=55, minwidth=50, anchor="center", stretch=False)
+        self.tree.column("nivel", width=95, minwidth=70, anchor="center")
+        self.tree.column("status", width=110, minwidth=90, anchor="center")
 
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar_y = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar_y.set)
 
-        tree_area = tk.Frame(list_frame, bg=self.WHITE)
-        tree_area.pack(fill=tk.BOTH, expand=True)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree_and_scroll = tk.Frame(list_frame, bg=self.WHITE)
+        tree_and_scroll.pack(fill=tk.BOTH, expand=True)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, in_=tree_and_scroll)
+        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y, in_=tree_and_scroll)
 
         # Popular treeview
-        self.tree_vars: dict[str, tk.BooleanVar] = {}
-        for i, user in enumerate(USERS):
-            var = tk.BooleanVar(value=True)
+        for user in USERS:
+            var = tk.BooleanVar(value=False)
             self.tree_vars[user["email"]] = var
 
-            role_text = user["role"]
-            role_tag = "admin" if user["role"] == "Administrador" else "visit" if user["role"] == "Visitante" else "user"
-
+            role_tag = ("admin" if user["role"] == "Administrador"
+                        else "visit" if user["role"] == "Visitante" else "user")
+            check_text = "  [  ]  "
             iid = self.tree.insert("", tk.END, values=(
-                "", user["name"], user["email"], user["password"], role_text, ""
+                check_text, user["name"], user["email"], user["password"], user["role"], ""
             ), tags=(role_tag,))
+            self.tree_items[user["email"]] = iid
 
-            # Checkbox customizado na coluna "selecionar"
-            cb = tk.Checkbutton(tree_area, variable=var,
-                                command=lambda e=None, v=var: self._update_count(),
-                                bg=self.WHITE, activebackground=self.WHITE,
-                                highlightthickness=0, bd=0, cursor="hand2")
-            self.tree.item(iid, values=("", user["name"], user["email"],
-                                        user["password"], role_text, ""))
-
-        self.tree.tag_configure("admin", foreground=self.ADMIN_COLOR, font=("Segoe UI", 10, "bold"))
+        self.tree.tag_configure("admin", foreground=self.ADMIN_COLOR,
+                                font=("Segoe UI", 10, "bold"))
         self.tree.tag_configure("user", foreground=self.TEXT)
-        self.tree.tag_configure("visit", foreground=self.VISITOR_COLOR, font=("Segoe UI", 10, "italic"))
+        self.tree.tag_configure("visit", foreground=self.VISITOR_COLOR,
+                                font=("Segoe UI", 10, "italic"))
 
-        # Bind click na coluna checkbox para toggle
+        # Bind: clicar em QUALQUER lugar da linha toggla
         self.tree.bind("<Button-1>", self._on_tree_click)
+        self.tree.bind("<Double-Button-1>", self._on_tree_click)
 
-        # ---- BOTOES DE ACAO ----
-        action_frame = tk.Frame(self.root, bg=self.BG)
-        action_frame.pack(fill=tk.X, padx=20, pady=(0, 16))
+        # ---- RODAPE FIXO COM BOTAO ENVIAR ----
+        footer = tk.Frame(main_container, bg=self.BG, pady=10)
+        footer.pack(fill=tk.X, side=tk.BOTTOM, padx=16)
 
-        self.send_btn = tk.Button(action_frame, text="Enviar Emails Selecionados",
-                                  font=("Segoe UI", 12, "bold"),
+        # Linha separadora
+        sep = tk.Frame(main_container, bg="#d1d5db", height=1)
+        sep.pack(fill=tk.X, side=tk.BOTTOM, padx=16)
+
+        # Linha com botoes e progresso
+        btn_row = tk.Frame(footer, bg=self.BG)
+        btn_row.pack(fill=tk.X)
+
+        self.send_btn = tk.Button(btn_row, text="  ENVIAR EMAILS SELECIONADOS  ",
+                                  font=("Segoe UI", 13, "bold"),
                                   bg=self.PRIMARY, fg=self.WHITE,
-                                  activebackground=self.PRIMARY_DARK, activeforeground=self.WHITE,
-                                  relief=tk.FLAT, bd=0, padx=28, pady=10,
+                                  activebackground=self.PRIMARY_DARK,
+                                  activeforeground=self.WHITE,
+                                  relief=tk.FLAT, bd=0,
+                                  padx=24, pady=12,
                                   cursor="hand2", command=self._send_emails)
-        self.send_btn.pack(side=tk.LEFT, padx=(0, 12))
+        self.send_btn.pack(side=tk.LEFT)
 
-        self.close_btn = tk.Button(action_frame, text="Fechar",
-                                   font=("Segoe UI", 10), bg=self.GRAY, fg="#6b7280",
-                                   activebackground="#e5e7eb", relief=tk.FLAT, bd=0,
-                                   padx=16, pady=10, cursor="hand2",
+        self.progress = ttk.Progressbar(btn_row, mode="determinate", length=180)
+        self.progress.pack(side=tk.LEFT, padx=16, fill=tk.X, expand=True)
+
+        self.close_btn = tk.Button(btn_row, text="Fechar",
+                                   font=("Segoe UI", 10), bg="#e5e7eb", fg="#6b7280",
+                                   activebackground="#d1d5db", relief=tk.FLAT, bd=0,
+                                   padx=14, pady=12, cursor="hand2",
                                    command=self.root.destroy)
         self.close_btn.pack(side=tk.RIGHT)
 
-        # Barra de progresso
-        self.progress = ttk.Progressbar(action_frame, mode="determinate", length=200)
-        self.progress.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
-
-        self._update_count()
-
-    # ---------- Tree checkbox toggle ----------
+    # ---------- Toggle por clique em qualquer lugar ----------
     def _on_tree_click(self, event):
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return
         region = self.tree.identify("region", event.x, event.y)
-        if region == "tree":
-            col = self.tree.identify_column(event.x)
-            if col == "#1":  # coluna "selecionar"
-                item = self.tree.identify_row(event.y)
-                if item:
-                    values = self.tree.item(item, "values")
-                    email = values[2]
-                    var = self.tree_vars.get(email)
-                    if var:
-                        var.set(not var.get())
-                        self._update_count()
+        if region != "tree":
+            return
+        values = self.tree.item(item, "values")
+        email = values[2]
+        var = self.tree_vars.get(email)
+        if var:
+            var.set(not var.get())
+            self._refresh_row(email)
+            self._update_count()
 
-    def _refresh_checkboxes_display(self):
-        """Re-desenha os valores de checkbox no treeview."""
-        for item in self.tree.get_children():
-            values = self.tree.item(item, "values")
-            email = values[2]
-            var = self.tree_vars.get(email)
-            checked = var.get() if var else False
-            new_values = ("X" if checked else "",) + values[1:]
-            self.tree.item(item, values=new_values)
+    def _refresh_row(self, email: str):
+        """Atualiza visual de uma linha (checkbox + cor de fundo)."""
+        iid = self.tree_items.get(email)
+        if not iid:
+            return
+        var = self.tree_vars.get(email)
+        checked = var.get() if var else False
+        values = self.tree.item(iid, "values")
+        new_check = "  [X]  " if checked else "  [  ]  "
+        new_values = (new_check,) + values[1:]
+        self.tree.item(iid, values=new_values)
 
     def _update_count(self):
         count = sum(1 for v in self.tree_vars.values() if v.get())
-        self.selected_count_var.set(f"Selecionados: {count} / {len(USERS)}")
-        self._refresh_checkboxes_display()
+        total = len(USERS)
+        self.selected_count_var.set(f"Selecionados: {count} / {total}")
+        # Atualizar visual de todas as linhas
+        for email in self.tree_vars:
+            self._refresh_row(email)
 
     def _select_all(self):
         for v in self.tree_vars.values():
@@ -392,12 +399,12 @@ class EmailSenderApp:
         self._update_count()
 
     def _select_admins(self):
-        for i, user in enumerate(USERS):
+        for user in USERS:
             self.tree_vars[user["email"]].set(user["role"] == "Administrador")
         self._update_count()
 
     def _select_users(self):
-        for i, user in enumerate(USERS):
+        for user in USERS:
             self.tree_vars[user["email"]].set(user["role"] == "Usuario")
         self._update_count()
 
@@ -405,19 +412,19 @@ class EmailSenderApp:
     def _get_selected_users(self) -> list[dict]:
         return [u for u in USERS if self.tree_vars.get(u["email"], tk.BooleanVar(value=False)).get()]
 
-    def _set_status(self, email: str, text: str, tag: str = ""):
-        for item in self.tree.get_children():
-            values = self.tree.item(item, "values")
-            if values[2] == email:
-                new_values = values[:5] + (text,)
-                self.tree.item(item, values=new_values)
-                if tag == "ok":
-                    self.tree.item(item, tags=("sent",))
-                    self.tree.tag_configure("sent", foreground="#16a34a", font=("Segoe UI", 10, "bold"))
-                elif tag == "err":
-                    self.tree.item(item, tags=("error",))
-                    self.tree.tag_configure("error", foreground="#dc2626", font=("Segoe UI", 10))
-                break
+    def _set_status(self, email: str, text: str, is_ok: bool = None):
+        iid = self.tree_items.get(email)
+        if not iid:
+            return
+        values = self.tree.item(iid, "values")
+        new_values = values[:5] + (text,)
+        self.tree.item(iid, values=new_values)
+        if is_ok is True:
+            self.tree.item(iid, tags=("sent",))
+            self.tree.tag_configure("sent", foreground="#16a34a", font=("Segoe UI", 10, "bold"))
+        elif is_ok is False:
+            self.tree.item(iid, tags=("error",))
+            self.tree.tag_configure("error", foreground="#dc2626", font=("Segoe UI", 10))
 
     def _send_emails(self):
         if self.sending:
@@ -427,12 +434,14 @@ class EmailSenderApp:
         sender_pass = self.sender_pass_var.get().strip()
 
         if not sender_email or not sender_pass:
-            messagebox.showwarning("Atencao", "Preencha o email remetente e a senha/App Password.")
+            messagebox.showwarning("Atencao",
+                                   "Preencha o email remetente e a senha/App Password nos campos acima.")
             return
 
         selected = self._get_selected_users()
         if not selected:
-            messagebox.showwarning("Atencao", "Selecione ao menos um destinatario.")
+            messagebox.showwarning("Atencao",
+                                   "Selecione ao menos um destinatario clicando nas linhas da tabela.")
             return
 
         if not messagebox.askyesno("Confirmar Envio",
@@ -440,39 +449,41 @@ class EmailSenderApp:
             return
 
         self.sending = True
-        self.send_btn.configure(state=tk.DISABLED, bg="#9ca3af", text="Enviando...")
+        self.send_btn.configure(state=tk.DISABLED, bg="#9ca3af", text="  ENVIANDO...  ")
         self.progress["maximum"] = len(selected)
         self.progress["value"] = 0
 
-        # Limpar status anterior
+        # Reset status
         for u in selected:
-            self._set_status(u["email"], "Enviando...", "sending")
-            self.tree.tag_configure("sending", foreground="#a16207", font=("Segoe UI", 10, "italic"))
+            self._set_status(u["email"], "Enviando...", None)
+        self.tree.tag_configure("sending", foreground="#a16207", font=("Segoe UI", 10, "italic"))
+        for u in selected:
+            iid = self.tree_items.get(u["email"])
+            if iid:
+                self.tree.item(iid, tags=("sending",))
 
         def _run():
             success = 0
             failed = 0
             for i, user in enumerate(selected):
                 email_addr, ok, msg = send_email_to_user(sender_email, sender_pass, user)
-
                 self.root.after(0, lambda ea=email_addr, o=ok, m=msg, idx=i: (
-                    self._set_status(ea, "Enviado!" if o else f"Erro: {m[:25]}", "ok" if o else "err"),
+                    self._set_status(ea, "Enviado!" if o else f"Erro: {m[:30]}", o),
                     self.progress.configure(value=idx + 1)
                 ))
-
                 if ok:
                     success += 1
                 else:
                     failed += 1
-
             total = success + failed
-            self.root.after(0, lambda: self._finish_sending(success, failed, total))
+            self.root.after(0, lambda s=success, f=failed, t=total: self._finish_sending(s, f, t))
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def _finish_sending(self, success: int, failed: int, total: int):
+    def _finish_sending(self, success, failed, total):
         self.sending = False
-        self.send_btn.configure(state=tk.NORMAL, bg=self.PRIMARY, text="Enviar Emails Selecionados")
+        self.send_btn.configure(state=tk.NORMAL, bg=self.PRIMARY,
+                                text="  ENVIAR EMAILS SELECIONADOS  ")
         self.progress["value"] = total
         messagebox.showinfo("Concluido",
                             f"Envio finalizado!\n\n"
