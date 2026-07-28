@@ -46,6 +46,9 @@ COPY --from=builder /app/public ./public
 # Copy prisma schema (PostgreSQL version)
 COPY --from=builder /app/prisma ./prisma
 
+# Copy seed script
+COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
+
 # Set permissions
 RUN chown -R nextjs:nodejs /app
 
@@ -57,4 +60,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Use local prisma binary (NOT bunx) to prevent v7 download at runtime
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && bun server.js"]
+# Run db push, then seed users, then start server
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && bun prisma/seed.ts && bun server.js"]
