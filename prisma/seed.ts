@@ -7,20 +7,20 @@ const prisma = new PrismaClient();
 // Default passwords (used only if SEED_PASSWORDS env var is not set)
 // On production, always set SEED_PASSWORDS environment variable for security
 const DEFAULT_USERS = [
-  { name: 'Marlon Mendes Silva', email: 'marlon-m@zaminebrasil.com', password: 'za01', role: 'admin' },
-  { name: 'Max Henrique Araujo Rufino', email: 'max-r@zaminebrasil.com', password: 'za02', role: 'admin' },
-  { name: 'Julio Cesar Sanches', email: 'julio-s@zaminebrasil.com', password: 'za03', role: 'user' },
-  { name: 'Jun Shibuya', email: 'jun-shibuya@zaminebrasil.com', password: 'za04', role: 'user' },
-  { name: 'Yuji Furukawa', email: 'yuji-furukawa@zaminebrasil.com', password: 'za05', role: 'user' },
-  { name: 'Wallysson Diego Santiago Santos', email: 'wallysson-s@zaminebrasil.com', password: 'za06', role: 'user' },
-  { name: 'Wagner Maciel Cunha', email: 'wagner-m@zaminebrasil.com', password: 'za07', role: 'user' },
-  { name: 'Fabricio Cezar de Almeida', email: 'fabricio-c@zaminebrasil.com', password: 'za08', role: 'user' },
-  { name: 'Alvino Alberto Junior', email: 'alvino-j@zaminebrasil.com', password: 'za09', role: 'user' },
-  { name: 'Fernando Quintão Pena', email: 'fernando-p@zaminebrasil.com', password: 'za10', role: 'user' },
-  { name: 'Ranielly Miranda De Souza', email: 'ranielly-s@zaminebrasil.com', password: 'za11', role: 'user' },
-  { name: 'Rodrigo Valentino Victor', email: 'rodrigo-v@zaminebrasil.com', password: 'za12', role: 'user' },
-  { name: 'Victor Carvalho de Almeida', email: 'victor-a@zaminebrasil.com', password: 'za13', role: 'user' },
-  { name: 'Visitante', email: 'visitante@zaminebrasil.com', password: 'za00', role: 'user' },
+  { name: 'Marlon Mendes Silva', email: 'marlon-m@zaminebrasil.com', password: 'Zamine@2026!', role: 'admin' },
+  { name: 'Max Henrique Araujo Rufino', email: 'max-r@zaminebrasil.com', password: 'MaxR@2026!', role: 'admin' },
+  { name: 'Julio Cesar Sanches', email: 'julio-s@zaminebrasil.com', password: 'JulioS@2026!', role: 'user' },
+  { name: 'Jun Shibuya', email: 'jun-shibuya@zaminebrasil.com', password: 'JunShi@2026!', role: 'user' },
+  { name: 'Yuji Furukawa', email: 'yuji-furukawa@zaminebrasil.com', password: 'YujiFu@2026!', role: 'user' },
+  { name: 'Wallysson Diego Santiago Santos', email: 'wallysson-s@zaminebrasil.com', password: 'Wallys@2026!', role: 'user' },
+  { name: 'Wagner Maciel Cunha', email: 'wagner-m@zaminebrasil.com', password: 'Wagner@2026!', role: 'user' },
+  { name: 'Fabricio Cezar de Almeida', email: 'fabricio-c@zaminebrasil.com', password: 'Fabricio@2026!', role: 'user' },
+  { name: 'Alvino Alberto Junior', email: 'alvino-j@zaminebrasil.com', password: 'Alvino@2026!', role: 'user' },
+  { name: 'Fernando Quintão Pena', email: 'fernando-p@zaminebrasil.com', password: 'Fernando@2026!', role: 'user' },
+  { name: 'Ranielly Miranda De Souza', email: 'ranielly-s@zaminebrasil.com', password: 'Ranielly@2026!', role: 'user' },
+  { name: 'Rodrigo Valentino Victor', email: 'rodrigo-v@zaminebrasil.com', password: 'Rodrigo@2026!', role: 'user' },
+  { name: 'Victor Carvalho de Almeida', email: 'victor-a@zaminebrasil.com', password: 'Victor@2026!', role: 'user' },
+  { name: 'Visitante', email: 'visitante@zaminebrasil.com', password: 'Visit@2026!', role: 'user' },
 ];
 
 function generateRandomPassword(length = 10): string {
