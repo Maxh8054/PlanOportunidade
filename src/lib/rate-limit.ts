@@ -87,3 +87,9 @@ export function getClientIp(request: Request): string {
     'unknown'
   );
 }
+
+// ── Reset rate limit for a specific key ──────────────────────────
+// Used when admin approves a password change — resets the user's rate limit
+export function resetRateLimit(key: string): void {
+  store.delete(key);
+}

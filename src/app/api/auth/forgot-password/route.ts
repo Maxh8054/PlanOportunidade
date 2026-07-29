@@ -1,28 +1,16 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
-import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { rateLimit, getClientIp, resetRateLimit } from '@/lib/rate-limit';
 import { validatePassword, isCommonPassword } from '@/lib/password-strength';
 import { auditLog } from '@/lib/audit-log';
 
-const FORGOT_RATE_MAX = 3;              // 3 requests per IP per 15 min
+const FORGOT_RATE_MAX = 1;              // 1 request per email per 15 min
 const FORGOT_RATE_WINDOW = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
   try {
-    // ── Rate limiting by IP ──────────────────────────────────────
     const ip = getClientIp(request);
-    const rl = rateLimit(ip, FORGOT_RATE_MAX, FORGOT_RATE_WINDOW);
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: 'Muitas solicitações. Aguarde alguns minutos.' },
-        {
-          status: 429,
-          headers: { 'Retry-After': String(Math.ceil((rl.resetTime - Date.now()) / 1000)) },
-        },
-      );
-    }
-
     const { email, newPassword } = await request.json();
 
     if (!email) {
@@ -31,6 +19,18 @@ export async function POST(request: Request) {
 
     if (!newPassword) {
       return NextResponse.json({ error: 'Nova senha é obrigatória' }, { status: 400 });
+    }
+
+    // ── Rate limiting by EMAIL (not IP) — 1 request per email per 15 min ──
+    const rl = rateLimit(`forgot:${email.toLowerCase().trim()}`, FORGOT_RATE_MAX, FORGOT_RATE_WINDOW);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Muitas solicitações para este email. Aguarde alguns minutos.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil((rl.resetTime - Date.now()) / 1000)) },
+        },
+      );
     }
 
     // ── Password strength validation ───────────────────────────

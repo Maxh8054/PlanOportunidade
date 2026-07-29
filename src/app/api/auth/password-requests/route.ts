@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSessionToken, requireAdmin, unauthorized, forbidden } from '@/lib/auth';
-import { getClientIp } from '@/lib/rate-limit';
+import { getClientIp, resetRateLimit } from '@/lib/rate-limit';
 import { auditLog } from '@/lib/audit-log';
 
 // Auto-expire pending requests older than 7 days
@@ -177,6 +177,9 @@ export async function POST(request: Request) {
     if (resetRequest.status !== 'pending') return NextResponse.json({ error: 'Já resolvida.' }, { status: 400 });
 
     if (action === 'approve') {
+      // Get user info before updating
+      const targetUser = await db.user.findUnique({ where: { id: resetRequest.userId }, select: { email: true } });
+
       await db.user.update({
         where: { id: resetRequest.userId },
         data: {
@@ -188,6 +191,11 @@ export async function POST(request: Request) {
           tokenExpiresAt: null,
         },
       });
+
+      // Reset rate limit for this email so user can immediately request again if needed
+      if (targetUser) {
+        resetRateLimit(`forgot:${targetUser.email.toLowerCase().trim()}`);
+      }
 
       await db.passwordResetRequest.update({
         where: { id: requestId },
