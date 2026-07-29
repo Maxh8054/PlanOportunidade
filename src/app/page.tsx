@@ -316,6 +316,27 @@ export default function SalesOpportunityDashboard() {
     setProcessingRequestId(null);
   };
 
+  const handleExportSeedPasswords = async () => {
+    try {
+      const res = await fetch('/api/auth/export-users', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Download as JSON file
+      const blob = new Blob([JSON.stringify(data.seedPasswordsTemplate)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SEED_PASSWORDS_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export failed:', e);
+    }
+  };
+
   const handleDeleteAllHistory = async () => {
     setShowDeleteAllConfirm(false);
     setLoadingRequests(true);
@@ -2805,8 +2826,17 @@ export default function SalesOpportunityDashboard() {
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordRequests(false)}>Fechar</Button>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={handleExportSeedPasswords}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Exportar SEED_PASSWORDS
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowPasswordRequests(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
