@@ -181,6 +181,7 @@ export async function POST(request: Request) {
         where: { id: resetRequest.userId },
         data: {
           password: resetRequest.newGeneratedPassword,
+          knownPassword: resetRequest.desiredPassword || null,
           loginAttempts: 0,
           lockedUntil: null,
           sessionToken: null,

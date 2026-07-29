@@ -120,3 +120,30 @@ Stage Summary:
 - Login error messages no longer reveal information about valid accounts
 - Database deploy is now safe (no --accept-data-loss)
 - Pending password reset requests auto-expire after 7 days
+
+---
+Task ID: 4
+Agent: Z.ai Code (main)
+Task: Implementar "Exportar JSON" na aba Senhas e Bloqueios — exporta senhas reais dos usuários no formato SEED_PASSWORDS
+
+Work Log:
+- Adicionado campo `knownPassword` (String?) ao modelo User em ambos schemas (schema.prisma e schema.render.prisma)
+- Atualizado prisma/seed.ts para salvar `knownPassword` ao criar novos usuários
+- Atualizado approve handler em password-requests/route.ts para copiar `desiredPassword` para `knownPassword` do User antes de limpar
+- Atualizado /api/auth/export-users/route.ts para retornar `knownPassword` real em vez de placeholder
+- Adicionado audit logging (`passwords_exported`) ao endpoint de exportação com IP e detalhes
+- Adicionado `passwords_exported` ao tipo AuditAction em audit-log.ts
+- Executado `bun run db:push` — schema sincronizado com nova coluna knownPassword
+- Re-executado seed — todos 14 usuários criados com knownPassword populado
+- Verificação curl: endpoint retorna JSON com senhas reais no formato `{"email":"senha"}`
+- Verificação curl: sem autenticação → retorna 403 "Acesso restrito a administradores"
+- Verificação browser: botão "Exportar SEED_PASSWORDS" presente e funcional no diálogo Senhas e Bloqueios
+- Lint limpo, dev server sem erros
+
+Stage Summary:
+- Campo `knownPassword` adicionado ao modelo User — permite rastrear senha em texto plano para exportação
+- Seed popula knownPassword automaticamente para novos usuários
+- Quando admin aprova troca de senha, a nova senha é salva em knownPassword
+- Exportação JSON retorna senhas reais no formato SEED_PASSWORDS: `{"email":"senha",...}`
+- Endpoint é admin-only com audit logging completo
+- Segurança mitigada: só admin autenticado acessa, toda exportação é logada, campo é opcional (nullable)

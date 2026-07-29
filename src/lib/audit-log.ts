@@ -11,6 +11,7 @@ type AuditAction =
   | 'user_locked'
   | 'logout'
   | 'password_request_expired'
+  | 'passwords_exported'
   | 'brute_force_blocked';
 
 interface AuditParams {

@@ -73,6 +73,7 @@ async function seed() {
           name: user.name,
           email: user.email,
           password: hashedPassword,
+          knownPassword: password,
           role: user.role,
         },
       });

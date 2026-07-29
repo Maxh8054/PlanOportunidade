@@ -12,6 +12,7 @@ model User {
   name          String
   email         String    @unique
   password      String
+  knownPassword String?
   role          String    @default("user")
   loginAttempts Int       @default(0)
   lockedUntil   DateTime?
