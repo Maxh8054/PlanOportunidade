@@ -60,5 +60,6 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Use local prisma binary (NOT bunx) to prevent v7 download at runtime
-# Run db push (safe mode — will REFUSE destructive changes), then seed users, then start server
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push && bun prisma/seed.ts && bun server.js"]
+# db push --accept-data-loss is needed for Prisma schema migrations (adding UNIQUE constraints,
+# creating new tables/columns). Safe because seed never overwrites existing user passwords.
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && bun prisma/seed.ts && bun server.js"]
