@@ -1,0 +1,785 @@
+============================================================
+GUIA COMPLETO: SISTEMA DE TROCA DE SENHA COM APROVAÇÃO DO ADMIN
+============================================================
+
+Tecnologias:
+- Next.js 16 com App Router
+- Prisma ORM (SQLite local / PostgreSQL produção)
+- shadcn/ui + Tailwind CSS
+- Zustand (state management)
+- bcryptjs (hash de senhas)
+- HttpOnly cookies (sessão segura)
+- TypeScript
+
+Dependências necessárias:
+  bun add bcryptjs prisma @prisma/client zustand
+  bun add -d @types/bcryptjs
+
+
+============================================================
+1. MODELO DE DADOS (Prisma Schema)
+============================================================
+
+Adicione ao seu prisma/schema.prisma:
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          String    @default("user")    // "admin" ou "user"
+  loginAttempts Int       @default(0)         // conta falhas de login
+  lockedUntil   DateTime?                     // bloqueado até quando
+  sessionToken  String?   @unique             // token httpOnly cookie
+  tokenExpiresAt DateTime?                    // expiração do token
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  passwordResetRequests PasswordResetRequest[]
+}
+
+model PasswordResetRequest {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id])
+  status               String    @default("pending")  // pending, approved, rejected
+  newGeneratedPassword String    // hash bcrypt da nova senha
+  desiredPassword      String?   // senha em plaintext pro admin ver (limpo após resolver)
+  createdAt            DateTime  @default(now())
+  resolvedAt           DateTime?
+  resolvedBy           String?   // id do admin que resolveu
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // login_success, login_failed, password_request, etc.
+  userId    String?
+  userEmail String?
+  userName  String?
+  ip        String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+Lógica chave:
+- sessionToken é @unique - um usuário só pode ter uma sessão por vez
+- newGeneratedPassword armazena o HASH da nova senha desejada
+- desiredPassword armazena em PLAINTEXT para o admin visualizar (é apagado ao aprovar/rejeitar)
+- AuditLog registra TODAS as ações de autenticação (fire-and-forget, não bloqueia requests)
+
+
+============================================================
+2. SEED (Criação de Usuários Iniciais)
+============================================================
+
+Arquivo: prisma/seed.ts
+
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+
+const prisma = new PrismaClient();
+
+// Senhas padrão para desenvolvimento local
+// Em produção, use a env var SEED_PASSWORDS para não expor senhas no código
+const DEFAULT_USERS = [
+  { name: 'Admin', email: 'admin@suaempresa.com', password: 'Admin@2026!', role: 'admin' },
+  { name: 'Usuário', email: 'user@suaempresa.com', password: 'User@2026!', role: 'user' },
+];
+
+function getPassword(email: string): string {
+  // Em produção: lê senhas da env var SEED_PASSWORDS (JSON)
+  const envPasswords = process.env.SEED_PASSWORDS;
+  if (envPasswords) {
+    try {
+      const map = JSON.parse(envPasswords);
+      if (map[email] && typeof map[email] === 'string') return map[email];
+    } catch { /* ignore */ }
+  }
+  // Fallback: senha padrão (local dev)
+  const fallback = DEFAULT_USERS.find(u => u.email === email);
+  return fallback?.password || crypto.randomBytes(10).toString('base64url').slice(0, 10);
+}
+
+async function seed() {
+  for (const user of DEFAULT_USERS) {
+    const existing = await prisma.user.findUnique({ where: { email: user.email } });
+
+    if (existing) {
+      // IMPORTANTE: NUNCA sobrescreve senha de usuário existente
+      await prisma.user.update({
+        where: { email: user.email },
+        data: {
+          role: user.role,
+          name: user.name,
+          lockedUntil: null,
+          loginAttempts: 0,
+          // NÃO inclui password aqui!
+        },
+      });
+    } else {
+      // Novo usuário: cria com hash da senha
+      const password = getPassword(user.email);
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await prisma.user.create({
+        data: {
+          name: user.name,
+          email: user.email,
+          password: hashedPassword,
+          role: user.role,
+        },
+      });
+    }
+  }
+}
+
+seed().catch(console.error).finally(() => prisma.$disconnect());
+
+Ponto crítico: O seed usa findUnique + create/update separados (NÃO upsert com password no update).
+Assim em produção as senhas aprovadas pelo admin nunca são sobrescritas em novos deploys.
+
+No Dockerfile: CMD db push --accept-data-loss && bun prisma/seed.ts && bun server.js
+
+
+============================================================
+3. BIBLIOTECAS DE SEGURANÇA
+============================================================
+
+3a. Rate Limiting - Arquivo: src/lib/rate-limit.ts
+
+const store = new Map<string, { count: number; resetTime: number }>();
+const failedLoginByIp = new Map<string, { emails: Set<string>; resetTime: number }>();
+
+// Limpa entradas expiradas a cada 10 minutos
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of store) {
+    if (now >= record.resetTime) store.delete(key);
+  }
+  for (const [key, record] of failedLoginByIp) {
+    if (now >= record.resetTime) failedLoginByIp.delete(key);
+  }
+}, 10 * 60 * 1000);
+
+// Rate limit por IP
+export function rateLimit(key: string, maxRequests: number, windowMs: number) {
+  const now = Date.now();
+  const record = store.get(key);
+  if (!record || now >= record.resetTime) {
+    store.set(key, { count: 1, resetTime: now + windowMs });
+    return { success: true, remaining: maxRequests - 1, resetTime: now + windowMs };
+  }
+  if (record.count >= maxRequests) {
+    return { success: false, remaining: 0, resetTime: record.resetTime };
+  }
+  record.count++;
+  return { success: true, remaining: maxRequests - record.count, resetTime: record.resetTime };
+}
+
+// Brute-force: bloqueia IP que falhou em 5+ contas diferentes em 15 min
+export function trackFailedLogin(ip: string, email: string): { blocked: boolean; resetTime: number } {
+  const now = Date.now();
+  const record = failedLoginByIp.get(ip);
+  if (!record || now >= record.resetTime) {
+    failedLoginByIp.set(ip, { emails: new Set([email]), resetTime: now + 15 * 60 * 1000 });
+    return { blocked: false, resetTime: now + 15 * 60 * 1000 };
+  }
+  record.emails.add(email);
+  if (record.emails.size >= 5) return { blocked: true, resetTime: record.resetTime };
+  return { blocked: false, resetTime: record.resetTime };
+}
+
+export function isIpBlockedForBruteForce(ip: string): boolean {
+  const record = failedLoginByIp.get(ip);
+  if (!record) return false;
+  if (Date.now() >= record.resetTime) { failedLoginByIp.delete(ip); return false; }
+  return record.emails.size >= 5;
+}
+
+export function getClientIp(request: Request): string {
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+}
+
+
+------------------------------------------------------------
+3b. Validação de Senha Forte - Arquivo: src/lib/password-strength.ts
+
+export function validatePassword(password: string): { valid: boolean; errors: string[]; score: number } {
+  const rules = [
+    { test: (pw: string) => pw.length >= 8, error: 'Pelo menos 8 caracteres' },
+    { test: (pw: string) => /[A-Z]/.test(pw), error: 'Pelo menos 1 maiúscula' },
+    { test: (pw: string) => /[a-z]/.test(pw), error: 'Pelo menos 1 minúscula' },
+    { test: (pw: string) => /[0-9]/.test(pw), error: 'Pelo menos 1 número' },
+    { test: (pw: string) => /[!@#$%^&*()_+\-=\[\]{};\'":\\|,.<>\/?`~]/.test(pw), error: 'Pelo menos 1 especial' },
+  ];
+  const errors: string[] = [];
+  let score = 0;
+  for (const rule of rules) {
+    if (!rule.test(password)) errors.push(rule.error);
+    else score++;
+  }
+  return { valid: errors.length === 0, errors, score };
+}
+
+const COMMON_PASSWORDS = new Set([
+  'Password1!', 'Passw0rd!', 'Qwerty1!', 'Admin123!', 'Letmein1!',
+  'Welcome1!', 'Mysql1!', 'P@ssw0rd', 'P@ssword1', 'Aa123456!',
+]);
+
+export function isCommonPassword(password: string): boolean {
+  return COMMON_PASSWORDS.has(password);
+}
+
+
+------------------------------------------------------------
+3c. Audit Log - Arquivo: src/lib/audit-log.ts
+
+import { db } from '@/lib/db';
+
+// Fire-and-forget (não bloqueia a request principal)
+export function auditLog(params: { action: string; userId?: string; userEmail?: string; userName?: string; ip?: string; details?: string }): void {
+  db.auditLog.create({ data: { ...params } }).catch(() => {});
+}
+
+
+------------------------------------------------------------
+3d. Autenticação com HttpOnly Cookies - Arquivo: src/lib/auth.ts
+
+import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+
+export const SESSION_COOKIE = 'seu_app_session';
+export const SESSION_MAX_AGE = 24 * 60 * 60; // 24h
+
+export async function getSessionToken(): Promise<string | null> {
+  return (await cookies()).get(SESSION_COOKIE)?.value ?? null;
+}
+
+export function setSessionCookie(token: string): Record<string, string> {
+  return { 'Set-Cookie': `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE}` };
+}
+
+export function clearSessionCookie(): Record<string, string> {
+  return { 'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0` };
+}
+
+export async function validateSession(token: string | null) {
+  if (!token) return null;
+  const user = await db.user.findUnique({
+    where: { sessionToken: token },
+    select: { id: true, name: true, email: true, role: true, tokenExpiresAt: true },
+  });
+  if (!user) return null;
+
+  // Token expirado? Limpa do banco
+  if (user.tokenExpiresAt && new Date(user.tokenExpiresAt) < new Date()) {
+    await db.user.update({ where: { id: user.id }, data: { sessionToken: null, tokenExpiresAt: null } });
+    return null;
+  }
+
+  // Sliding expiration: renova a cada request válida
+  db.user.update({ where: { id: user.id }, data: { tokenExpiresAt: new Date(Date.now() + SESSION_MAX_AGE * 1000) } }).catch(() => {});
+  return user;
+}
+
+export async function requireAdmin(token: string | null) {
+  const user = await validateSession(token);
+  if (!user || user.role !== 'admin') return null;
+  return user;
+}
+
+export function unauthorized() {
+  return NextResponse.json({ error: 'Não autorizado' }, { status: 401, headers: clearSessionCookie() });
+}
+
+export function forbidden(msg = 'Acesso restrito') {
+  return NextResponse.json({ error: msg }, { status: 403 });
+}
+
+
+============================================================
+4. API ROUTES
+============================================================
+
+4a. Login - Arquivo: src/app/api/auth/login/route.ts
+
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import bcrypt from 'bcryptjs';
+import { rateLimit, getClientIp, trackFailedLogin, isIpBlockedForBruteForce } from '@/lib/rate-limit';
+import { setSessionCookie, SESSION_MAX_AGE } from '@/lib/auth';
+import { auditLog } from '@/lib/audit-log';
+
+const MAX_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const LOGIN_RATE_MAX = 10;               // 10 login attempts per IP per 15 min
+const LOGIN_RATE_WINDOW = 15 * 60 * 1000;
+
+export async function POST(request: Request) {
+  try {
+    const ip = getClientIp(request);
+
+    // Brute-force global: IP tentando muitas contas diferentes
+    if (isIpBlockedForBruteForce(ip)) {
+      auditLog({ action: 'brute_force_blocked', ip, details: 'IP blocked for trying too many different accounts' });
+      return NextResponse.json({ error: 'Acesso temporariamente bloqueado.' }, { status: 429 });
+    }
+
+    // Rate limiting por IP
+    const rl = rateLimit(ip, LOGIN_RATE_MAX, LOGIN_RATE_WINDOW);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Muitas tentativas. Aguarde.' }, { status: 429 });
+    }
+
+    const { email, password } = await request.json();
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email e senha são obrigatórios' }, { status: 400 });
+    }
+
+    const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    if (!user) {
+      trackFailedLogin(ip, email);
+      auditLog({ action: 'login_failed', userEmail: email, ip });
+      return NextResponse.json({ error: 'Email ou senha incorretos' }, { status: 401 });
+    }
+
+    // Conta bloqueada
+    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      return NextResponse.json({ error: 'Conta temporariamente bloqueada.', locked: true }, { status: 403 });
+    }
+
+    // Verifica senha
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      const bruteResult = trackFailedLogin(ip, user.email);
+      const newAttempts = user.loginAttempts + 1;
+      const updateData: Record<string, unknown> = { loginAttempts: newAttempts };
+
+      if (newAttempts >= MAX_ATTEMPTS) {
+        updateData.lockedUntil = new Date(Date.now() + LOCK_DURATION_MS);
+        updateData.loginAttempts = 0;
+        auditLog({ action: 'user_locked', userId: user.id, userEmail: user.email, userName: user.name, ip });
+      } else {
+        auditLog({ action: 'login_failed', userId: user.id, userEmail: user.email, userName: user.name, ip });
+      }
+      await db.user.update({ where: { id: user.id }, data: updateData });
+
+      if (bruteResult.blocked) {
+        return NextResponse.json({ error: 'Acesso temporariamente bloqueado.' }, { status: 429 });
+      }
+      return NextResponse.json({ error: 'Email ou senha incorretos' }, { status: 401 });
+    }
+
+    // Login sucesso
+    const sessionToken = crypto.randomUUID();
+    const tokenExpiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+    await db.user.update({
+      where: { id: user.id },
+      data: { sessionToken, tokenExpiresAt, loginAttempts: 0, lockedUntil: null },
+    });
+    auditLog({ action: 'login_success', userId: user.id, userEmail: user.email, userName: user.name, ip });
+
+    return NextResponse.json({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    }, { headers: setSessionCookie(sessionToken) });
+  } catch (error) {
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  }
+}
+
+
+------------------------------------------------------------
+4b. Esqueci Senha - Arquivo: src/app/api/auth/forgot-password/route.ts
+
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import bcrypt from 'bcryptjs';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { validatePassword, isCommonPassword } from '@/lib/password-strength';
+import { auditLog } from '@/lib/audit-log';
+
+const FORGOT_RATE_MAX = 3;              // 3 requests per IP per 15 min
+const FORGOT_RATE_WINDOW = 15 * 60 * 1000;
+
+export async function POST(request: Request) {
+  try {
+    const ip = getClientIp(request);
+    const rl = rateLimit(ip, FORGOT_RATE_MAX, FORGOT_RATE_WINDOW);
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Muitas solicitações. Aguarde.' }, { status: 429 });
+    }
+
+    const { email, newPassword } = await request.json();
+    if (!email) return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
+    if (!newPassword) return NextResponse.json({ error: 'Nova senha é obrigatória' }, { status: 400 });
+
+    // Validação de senha forte
+    const validation = validatePassword(newPassword);
+    if (!validation.valid) {
+      return NextResponse.json({ error: 'Senha fraca: ' + validation.errors.join(', ') }, { status: 400 });
+    }
+    if (isCommonPassword(newPassword)) {
+      return NextResponse.json({ error: 'Senha muito comum.' }, { status: 400 });
+    }
+
+    const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+
+    // Sempre mesma mensagem (não revela se email existe)
+    if (!user) {
+      auditLog({ action: 'password_request', userEmail: email, ip, details: 'User not found' });
+      return NextResponse.json({ message: 'Se o email estiver cadastrado, solicitação enviada.' });
+    }
+
+    // Já tem pedido pendente?
+    const existingPending = await db.passwordResetRequest.findFirst({
+      where: { userId: user.id, status: 'pending' },
+    });
+    if (existingPending) {
+      return NextResponse.json({ message: 'Solicitação pendente. Aguarde aprovação.', alreadyRequested: true });
+    }
+
+    // Hash e cria pedido
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.passwordResetRequest.create({
+      data: {
+        userId: user.id,
+        newGeneratedPassword: hashedPassword,
+        desiredPassword: newPassword,       // plaintext pro admin
+        status: 'pending',
+      },
+    });
+
+    auditLog({ action: 'password_request', userId: user.id, userEmail: user.email, userName: user.name, ip });
+    return NextResponse.json({ message: 'Solicitação enviada! Aguarde aprovação.', requested: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  }
+}
+
+
+------------------------------------------------------------
+4c. Painel Admin - Arquivo: src/app/api/auth/password-requests/route.ts
+
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSessionToken, requireAdmin, forbidden } from '@/lib/auth';
+import { getClientIp } from '@/lib/rate-limit';
+import { auditLog } from '@/lib/audit-log';
+
+const REQUEST_EXPIRY_DAYS = 7;
+
+// Auto-expira requests com mais de 7 dias
+async function expireOldPendingRequests() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - REQUEST_EXPIRY_DAYS);
+  const expired = await db.passwordResetRequest.findMany({
+    where: { status: 'pending', createdAt: { lt: cutoff } },
+    include: { user: { select: { name: true, email: true } } },
+  });
+  for (const req of expired) {
+    await db.passwordResetRequest.update({
+      where: { id: req.id },
+      data: { status: 'rejected', newGeneratedPassword: '', desiredPassword: '', resolvedAt: new Date(), resolvedBy: 'system-expiry' },
+    });
+    auditLog({ action: 'password_request_expired', userId: req.userId, userEmail: req.user.email, userName: req.user.name });
+  }
+  return expired.length;
+}
+
+// GET - Lista pedidos (admin only)
+export async function GET() {
+  const token = await getSessionToken();
+  const admin = await requireAdmin(token);
+  if (!admin) return forbidden();
+
+  await expireOldPendingRequests();
+
+  const requests = await db.passwordResetRequest.findMany({
+    where: { status: 'pending' }, orderBy: { createdAt: 'desc' },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  const resolved = await db.passwordResetRequest.findMany({
+    where: { status: { in: ['approved', 'rejected'] } }, orderBy: { resolvedAt: 'desc' }, take: 20,
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  const resolvedWithAdmin = await Promise.all(resolved.map(async (r) => {
+    let resolvedByName = 'Sistema';
+    if (r.resolvedBy) {
+      const adminUser = await db.user.findUnique({ where: { id: r.resolvedBy }, select: { name: true } });
+      if (adminUser) resolvedByName = adminUser.name;
+    }
+    return { ...r, resolvedByName };
+  }));
+
+  const lockedUsers = await db.user.findMany({
+    where: { lockedUntil: { gt: new Date() } },
+    select: { id: true, name: true, email: true, loginAttempts: true, lockedUntil: true },
+  });
+
+  return NextResponse.json({
+    pending: requests.map(r => ({ id: r.id, userId: r.userId, userName: r.user.name, userEmail: r.user.email, desiredPassword: r.desiredPassword, createdAt: r.createdAt })),
+    resolved: resolvedWithAdmin.map(r => ({ id: r.id, userId: r.userId, userName: r.user.name, userEmail: r.user.email, status: r.status, createdAt: r.createdAt, resolvedAt: r.resolvedAt, resolvedByName: r.resolvedByName })),
+    lockedUsers: lockedUsers.map(u => ({ id: u.id, name: u.name, email: u.email, lockedUntil: u.lockedUntil })),
+  });
+}
+
+// POST - Aprovar, Rejeitar, Desbloquear, Deletar (admin only)
+export async function POST(request: Request) {
+  const token = await getSessionToken();
+  const admin = await requireAdmin(token);
+  if (!admin) return forbidden();
+
+  const ip = getClientIp(request);
+  const body = await request.json();
+  const { action } = body;
+
+  // Unlock
+  if (action === 'unlock') {
+    const { userId } = body;
+    const user = await db.user.findUnique({ where: { id: userId } });
+    if (!user) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    await db.user.update({ where: { id: userId }, data: { loginAttempts: 0, lockedUntil: null, sessionToken: null, tokenExpiresAt: null } });
+    auditLog({ action: 'user_unlocked', userId: admin.id, userEmail: admin.email, userName: admin.name, ip, details: `Unlocked ${user.name}` });
+    return NextResponse.json({ success: true, message: `${user.name} desbloqueado!` });
+  }
+
+  // Delete single
+  if (action === 'delete') {
+    const { requestId } = body;
+    await db.passwordResetRequest.delete({ where: { id: requestId } });
+    return NextResponse.json({ success: true });
+  }
+
+  // Delete all resolved
+  if (action === 'deleteAll') {
+    const result = await db.passwordResetRequest.deleteMany({ where: { status: { in: ['approved', 'rejected'] } } });
+    return NextResponse.json({ success: true, message: `${result.count} registro(s) removido(s).` });
+  }
+
+  // Approve / Reject
+  const { requestId } = body;
+  if (!['approve', 'reject'].includes(action)) {
+    return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
+  }
+
+  const resetRequest = await db.passwordResetRequest.findUnique({ where: { id: requestId } });
+  if (!resetRequest || resetRequest.status !== 'pending') {
+    return NextResponse.json({ error: 'Solicitação inválida.' }, { status: 400 });
+  }
+
+  if (action === 'approve') {
+    await db.user.update({
+      where: { id: resetRequest.userId },
+      data: { password: resetRequest.newGeneratedPassword, loginAttempts: 0, lockedUntil: null, sessionToken: null, tokenExpiresAt: null },
+    });
+    await db.passwordResetRequest.update({
+      where: { id: requestId },
+      data: { status: 'approved', desiredPassword: '', newGeneratedPassword: '', resolvedAt: new Date(), resolvedBy: admin.id },
+    });
+    auditLog({ action: 'password_approved', userId: admin.id, userName: admin.name, ip });
+    return NextResponse.json({ success: true, message: 'Senha atualizada!' });
+  } else {
+    await db.passwordResetRequest.update({
+      where: { id: requestId },
+      data: { status: 'rejected', newGeneratedPassword: '', desiredPassword: '', resolvedAt: new Date(), resolvedBy: admin.id },
+    });
+    auditLog({ action: 'password_rejected', userId: admin.id, userName: admin.name, ip });
+    return NextResponse.json({ success: true, message: 'Solicitação rejeitada.' });
+  }
+}
+
+
+------------------------------------------------------------
+4d. Check Session + Logout - Arquivo: src/app/api/auth/me/route.ts
+
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { getSessionToken, clearSessionCookie, validateSession } from '@/lib/auth';
+import { auditLog } from '@/lib/audit-log';
+
+export async function GET() {
+  const token = await getSessionToken();
+  const user = await validateSession(token);
+  if (!user) {
+    return NextResponse.json({ error: 'Sessão inválida' }, { status: 401, headers: clearSessionCookie() });
+  }
+  return NextResponse.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+}
+
+export async function POST(request: Request) {
+  const token = await getSessionToken();
+  let userName: string | null = null;
+  if (token) {
+    const user = await validateSession(token);
+    if (user) userName = user.name;
+  }
+  if (!token) return NextResponse.json({ error: 'Token não fornecido' }, { status: 401 });
+
+  await db.user.updateMany({ where: { sessionToken: token }, data: { sessionToken: null, tokenExpiresAt: null } });
+  auditLog({ action: 'logout', userName });
+  return NextResponse.json({ success: true }, { headers: clearSessionCookie() });
+}
+
+
+============================================================
+5. FRONTEND
+============================================================
+
+5a. Auth Store (Zustand) - Arquivo: src/store/auth-store.ts
+
+import { create } from 'zustand';
+
+interface AuthUser { id: string; name: string; email: string; role: string; }
+
+interface AuthState {
+  user: AuthUser | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  checkAuth: () => Promise<void>;
+  forgotPassword: (email: string, newPassword?: string) => Promise<any>;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null, isLoading: true, isAuthenticated: false, isAdmin: false,
+
+  login: async (email, password) => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+      credentials: 'same-origin',  // IMPORTANTE: envia httpOnly cookie
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error };
+    set({ user: json.user, isAuthenticated: true, isAdmin: json.user.role === 'admin' });
+    return { success: true };
+  },
+
+  logout: async () => {
+    await fetch('/api/auth/me', { method: 'POST', credentials: 'same-origin' });
+    set({ user: null, isAuthenticated: false, isAdmin: false });
+  },
+
+  checkAuth: async () => {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    if (!res.ok) { set({ isLoading: false, isAuthenticated: false, user: null, isAdmin: false }); return; }
+    const { user } = await res.json();
+    set({ user, isAuthenticated: true, isAdmin: user.role === 'admin', isLoading: false });
+  },
+
+  forgotPassword: async (email, newPassword) => {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, newPassword }),
+    });
+    const json = await res.json();
+    if (!res.ok) return { success: false, error: json.error };
+    return { success: true, ...json };
+  },
+}));
+
+Importante: Todas as chamadas fetch usam credentials: 'same-origin' para enviar/receber cookies httpOnly.
+
+
+------------------------------------------------------------
+5b. Login Page - Arquivo: src/components/LoginPage.tsx
+
+Componente com:
+- Formulário de login (email + senha)
+- Botão "Esqueci minha senha" que troca para formulário de troca
+- Formulário de troca: email + nova senha desejada
+- Indicador de força de senha em tempo real (checklist visual com 5 regras)
+- Botão "Solicitar" só habilita quando senha é válida
+- Mensagens coloridas: pendente (amarelo), erro (vermelho)
+
+Na página principal (page.tsx) o admin precisa ter:
+- Botão "Senhas e Bloqueios" com badge vermelha (pending + locked count)
+- Polling a cada 30 segundos
+- Dialog com 3 seções:
+  1. Usuários Bloqueados (cards vermelhos + botão Desbloquear)
+  2. Solicitações Pendentes (cards com senha desejada em verde + Aprovar/Rejeitar)
+  3. Histórico (cards + lixeira individual + "Apagar Tudo")
+
+
+============================================================
+6. FLUXO COMPLETO
+============================================================
+
+USUÁRIO pede troca de senha
+  |
+  v
+API valida: rate limit (3/IP/15min) + senha forte
+  |
+  v
+Cria PasswordResetRequest (status: "pending")
+  - newGeneratedPassword: hash bcrypt
+  - desiredPassword: plaintext
+  |
+  v
+Admin vê badge vermelha no botão
+  |
+  v
+Admin abre painel, vê a senha desejada em verde
+  |
+  v
+Admin clica APROVAR ou REJEITAR
+  |
+  v
+Se APROVAR:
+  1. user.password = newGeneratedPassword (hash)
+  2. Limpa sessionToken (desloga o usuário)
+  3. Zera loginAttempts e lockedUntil
+  4. desiredPassword = "" (limpa plaintext do banco)
+  5. Status = "approved"
+  |
+  v
+Usuário tenta logar com a NOVA senha
+
+
+============================================================
+7. SEGURANÇA IMPLEMENTADA
+============================================================
+
+| Proteção                      | Como funciona                                    |
+|-------------------------------|--------------------------------------------------|
+| Senhas com bcrypt (cost 10)   | Nunca armazena plaintext no user                 |
+| HttpOnly cookies              | JavaScript NÃO consegue ler o token              |
+| SameSite=Strict               | Protege contra CSRF                              |
+| Token expira 24h (sliding)    | Renova a cada request, expira se inativo         |
+| Rate limit login (10/IP/15min) | Impede flooding                                 |
+| Rate limit forgot (3/IP/15min) | Impede abuso de solicitação                      |
+| Bloqueio por conta (5 falhas) | Anti-brute-force por usuário (15 min)            |
+| Bloqueio por IP (5 contas)    | Anti-brute-force global                          |
+| Mensagem genérica de erro     | Não revela se email existe                       |
+| Senha forte obrigatória       | 8+ chars, maiúscula, minúscula, número, especial|
+| Blacklist senhas comuns       | Bloqueia Password1!, Admin123!, etc.             |
+| desiredPassword limpo         | Não fica plaintext no banco após resolver        |
+| Auto-expire 7 dias            | Requests antigos são rejeitados automaticamente  |
+| Audit log completo            | Registra todas as ações de autenticação         |
+| Seed não sobrescreve senhas   | Senhas aprovadas por admin são permanentes      |
+| Security Headers              | HSTS, CSP, X-Frame-Options: DENY                |
+
+
+============================================================
+8. CONFIGURAÇÃO DE PRODUÇÃO (Render)
+============================================================
+
+Variável de ambiente SEED_PASSWORDS (JSON):
+{
+  "admin@suaempresa.com": "Admin@2026!",
+  "user@suaempresa.com": "User@2026!"
+}
+
+Essa variável só serve para o PRIMEIRO deploy.
+Depois o seed NÃO sobrescreve senhas existentes.
+
+
+============================================================
+FIM DO GUIA
+============================================================
