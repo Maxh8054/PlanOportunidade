@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 
 // ── Cookie constants ──────────────────────────────────────────────
 export const SESSION_COOKIE = 'zamine_session';
-export const SESSION_MAX_AGE = 24 * 60 * 60; // 24 hours (seconds)
+export const SESSION_MAX_AGE = 365 * 24 * 60 * 60; // 365 days (essentially never expires)
 
 // ── Cookie helpers ─────────────────────────────────────────────────
 export async function getSessionToken(): Promise<string | null> {
